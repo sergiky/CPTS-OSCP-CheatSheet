@@ -213,6 +213,14 @@ If you click in the left top menu > Analysis > you can find pre-built queries.
 
 Custom queries via `Raw Query` box. Cheatsheet: https://hausec.com/2019/09/09/bloodhound-cypher-cheatsheet/
 
+### Remove connections and nodes
+
+Go to http://localhost:7474, add the credentials and do the following query to delete all:
+
+```
+MATCH (n) DETACH DELETE n
+```
+
 ---
 
 ## Braa
@@ -1077,6 +1085,23 @@ sudo nmap -p80,443,445,3309 -sCV 10.129.2.32 -oN targeted
 sudo nmap 10.129.2.0/24 -sn -oA tnet | grep for | cut -d" " -f5
 sudo nmap -sn -oA tnet 10.129.2.18 10.129.2.19 10.129.2.20 | grep for | cut -d" " -f5
 sudo nmap -v -A -iL hosts.txt -oN /home/htb-student/Documents/host-enum
+```
+
+### CopyPorts
+
+CopyPorts directly to the clipboard:
+
+```bash
+function copyPorts(){
+    file=$1
+    ports="$(grep -oE '[0-9]+/open' ${file} | cut -d / -f1 | sort -un | tr '\n' ',' | sed 's/.$//')"
+
+    wl-copy ${ports}
+    
+    echo ""
+    echo "[+] Ports copied to clipboard!"
+    echo "[>] ${ports}"
+}
 ```
 
 ### Scripts by Service
@@ -2326,6 +2351,16 @@ objdump -d binary
 ```
 
 ### gdb
+It is a real time debbuger
+
+```bash
+gdb binary
+```
+
+
+```
+info functions
+```
 
 ### Ghidra
 
@@ -3186,6 +3221,21 @@ gpp-decrypt <cpassword_value>
 
 ## Password Spraying
 
+The attack involves attempting to log in using one common password and a longer list of usernames or email addresses.
+
+Example of how it works:
+
+| Round | User | Password | Note |
+| :--- | :--- | :--- | :--- |
+| 1 | `bob.smith@inlanefreight.local` | `Welcome1` | |
+| 1 | `john.doe@inlanefreight.local` | `Welcome1` | |
+| 1 | `jane.doe@inlanefreight.local` | `Welcome1` | |
+| - | - | - | **DELAY** |
+| 2 | `bob.smith@inlanefreight.local` | `Passw0rd` | |
+| 2 | `john.doe@inlanefreight.local` | `Passw0rd` | |
+
+It's recommended to know the password policy. If you don't know it, wait a few hours between attempts — long enough for the account lockout threshold to reset.
+
 **Considerations:**
 - Know the password policy BEFORE spraying to avoid locking accounts
 - If you don't know it, wait several hours between attempts
@@ -3223,6 +3273,21 @@ sudo crackmapexec smb --local-auth 172.16.5.0/23 -u administrator -H <hash> | gr
 ```
 
 The `--local-auth` flag attempts login once per machine, avoiding lockouts.
+
+**External Password Spraying:**
+
+Common external targets for password spraying with AD credentials:
+
+- Microsoft 0365
+- Outlook Web Exchange
+- Exchange Web Access
+- Skype for Business
+- Lync Server
+- Microsoft Remote Desktop Services (RDS) Portals
+- Citrix portals using AD authentication
+- VDI implementations using AD authentication such as VMware Horizon
+- VPN portals (Citrix, SonicWall, OpenVPN, Fortinet, etc. that use AD authentication)
+- Custom web applications that use AD authentication
 
 ---
 
