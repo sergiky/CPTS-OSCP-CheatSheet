@@ -1,4 +1,4 @@
-# OSCP Cheatsheet — Organized
+# OSCP Cheatsheet
 
 > This CheatSheet have two section:
 > - **Part 1 - Tools**: commands grouped by tool
