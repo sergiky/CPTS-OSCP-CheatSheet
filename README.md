@@ -667,8 +667,23 @@ Rules location: `/usr/share/hashcat/rules`
 ## Impacket Suite
 
 ### psexec
+
+If you have a pwned in crackmapexec and winrm service is disabled you can use **impacket-psexec** to open a session. Sometime when the password have special characters used in bash you have to escaped:
+
 ```bash
 impacket-psexec domain.htb/user:password@10.10.10.10 cmd.exe
+```
+
+With the NTLM hash
+```
+impacket-psexec domain.htb/user@10.10.10.10 -hashes :<NT_HASH>
+```
+
+In the help panel you will see that need the LM hash, but is not necessary if you put in blank.
+
+Another way:
+```bash
+impacket-psexec EGOTISTICAL-BANK.LOCAL/Administrat
 ```
 
 ### wmiexec
