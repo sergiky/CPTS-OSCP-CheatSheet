@@ -2630,6 +2630,8 @@ Flags:
 - [Abusing GPP Passwords](#abusing-gpp-passwords)
 - [Password Spraying](#password-spraying)
 - [Windows Privilege Escalation](#windows-privilege-escalation)
+  - [Check if some user is kerberoastable and as-rep roastable](#check-if-some-user-is-kerberoastable-and-as-rep-roastable)
+  - [Abuse Account Operator group + WriteDACL in another group](#abuse-account-operator-group--writedacl-in-another-group)
 - [Linux Privilege Escalation](#linux-privilege-escalation)
 - [Pivoting - Strategy](#pivoting---strategy)
 - [Active Directory Enumeration](#active-directory-enumeration)
