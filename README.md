@@ -3973,6 +3973,20 @@ Or if you want to do all automatic from linux:
 10. **NFS no_root_squash:** mount share and create SUID binary
 11. **Automated tools:** LinPeas, LinEnum, linuxprivchecker
 
+### Add SUID privilege to the bash
+
+You can add SUID privilege to the bash if root can execute commands:
+
+Root:
+```bash
+chmod u+s /bin/bash
+```
+
+Non privileged user.
+```bash
+bash -p
+```
+
 ### Add Public Key (persistence)
 
 ```bash
