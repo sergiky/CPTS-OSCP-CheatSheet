@@ -921,6 +921,26 @@ Users (anonymous bind):
 ldapsearch -h 172.16.5.5 -x -b "DC=INLANEFREIGHT,DC=LOCAL" -s sub "(&(objectclass=user))" | grep sAMAccountName: | cut -f2 -d" "
 ```
 
+Search all items (with credentials):
+```bash
+ldapsearch -h support.htb -D 'ldap@support.htb' -w 'nvEfEK16^1aM4$e7AclUf8x$tRWxPWO1%lmz' -b "DC=support,DC=htb"| less
+```
+
+### Graphical tool | apache directory studio
+
+LDAP > new connection
+
+hostname: support.htb (added to /etc/hosts)
+
+Bind DN or user: ldap@support.htb
+Password: password
+
+One time introduced, on the left side you have a view tree icon of ldap.
+
+Then you can start searching.
+
+For find users you can go to DC=support, DC=htb (16) > CN=users
+
 ---
 
 ## Ldapdomaindump
@@ -2211,6 +2231,12 @@ RETR id
 DELE id
 QUIT
 ```
+
+### SMTP Apache James Server 2.3.2
+
+The default credential of port 4555 is root:root, if you can access you can create, list , change password of users among other things. With this, for example, you can read the email of some users
+
+There is an exploit that give a shell when something log in in the system (for example, via ssh).
 
 ---
 
