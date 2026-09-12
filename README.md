@@ -76,6 +76,7 @@
 - [SSH](#ssh)
 - [Sshuttle](#sshuttle)
 - [Subfinder](#subfinder)
+- [Useful resources for AD](#useful-resources-for-ad)
 - [Wafw00f](#wafw00f)
 - [Whatweb](#whatweb)
 - [Windapsearch](#windapsearch)
@@ -1078,7 +1079,6 @@ use auxiliary/scanner/mssql/mssql_ping
 
 - Railgun
 - Darkoperator's
-- [WADComs project](https://wadcoms.github.io/). Is a list of offensive security tools to be used against Windows/AD environment.
 
 ---
 
@@ -2509,16 +2509,6 @@ objdump -d binary
 ```
 
 ### gdb
-It is a real time debbuger
-
-```bash
-gdb binary
-```
-
-
-```
-info functions
-```
 
 ### Ghidra
 
@@ -2598,6 +2588,12 @@ You need to install .NET and it doesn't exist for arch linux.
 ```bash
 yay -S dnspyex-wine-bin
 ```
+
+---
+
+## Useful resources for AD
+
+- [WADComs project](https://wadcoms.github.io/). Is a list of offensive security tools to be used against Windows/AD environment.
 
 ---
 
