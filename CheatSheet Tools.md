@@ -37,7 +37,7 @@
 - [John The Ripper](#john-the-ripper)
 	- [Cracking files](#cracking-files)
 - [Kerbrute](#kerbrute)
-- [Ldapsearch](#ldapsearch)
+- [](#)
 	- [Graphical tool | apache directory studio](#graphical-tool--apache-directory-studio)
 - [Ldapdomaindump](#ldapdomaindump)
 - [Lftp](#lftp)
@@ -1009,17 +1009,17 @@ ldapsearch -x -H ldap://10.10.10.175 -b 'DC=EGOTISTICAL-BANK,DC=LOCAL'
 
 Password policy (anonymous bind):
 ```bash
-ldapsearch -h 172.16.5.5 -x -b "DC=INLANEFREIGHT,DC=LOCAL" -s sub "*" | grep -m 1 -B 10 pwdHistoryLength
+ldapsearch -H 172.16.5.5 -x -b "DC=INLANEFREIGHT,DC=LOCAL" -s sub "*" | grep -m 1 -B 10 pwdHistoryLength
 ```
 
 Users (anonymous bind):
 ```bash
-ldapsearch -h 172.16.5.5 -x -b "DC=INLANEFREIGHT,DC=LOCAL" -s sub "(&(objectclass=user))" | grep sAMAccountName: | cut -f2 -d" "
+ldapsearch -H 172.16.5.5 -x -b "DC=INLANEFREIGHT,DC=LOCAL" -s sub "(&(objectclass=user))" | grep sAMAccountName: | cut -f2 -d" "
 ```
 
 Search all items (with credentials):
 ```bash
-ldapsearch -h support.htb -D 'ldap@support.htb' -w 'nvEfEK16^1aM4$e7AclUf8x$tRWxPWO1%lmz' -b "DC=support,DC=htb"| less
+ldapsearch -H support.htb -D 'ldap@support.htb' -w 'nvEfEK16^1aM4$e7AclUf8x$tRWxPWO1%lmz' -b "DC=support,DC=htb"| less
 ```
 
 ### Graphical tool | apache directory studio
