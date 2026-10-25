@@ -37,7 +37,7 @@
 - [John The Ripper](#john-the-ripper)
 	- [Cracking files](#cracking-files)
 - [Kerbrute](#kerbrute)
-- [](#)
+- [Ldapsearch](#ldapsearch)
 	- [Graphical tool | apache directory studio](#graphical-tool--apache-directory-studio)
 - [Ldapdomaindump](#ldapdomaindump)
 - [Lftp](#lftp)
@@ -719,6 +719,11 @@ hashid -m '$1$FNr44XZC$wQxY6HHLrgrGX0e1195k.1'
 hashid -j 193069ceb0461e1d40d216e32c79c704
 ```
 
+identify the hash mode:
+```
+hashcat --example-hashes | grep -B20 krb5asrep
+```
+
 Dictionary attack (`-a 0`):
 ```bash
 hashcat -a 0 -m 0 e3e3ec5831ad5e7288241960e5d4fdb8 /usr/share/wordlists/rockyou.txt
@@ -993,6 +998,22 @@ Password spraying:
 kerbrute passwordspray -d inlanefreight.local --dc 172.16.5.5 valid_users.txt Welcome1
 ```
 
+has no preauth required
+
+Kerbrute have the possibility to give us the hash of the user, the same that impacket-GetNPUsers. However, it has append to me that the hash of kerbrute is not the same that the hash of GetNPUsers.
+
+**YOU CAN'T TRUST ON THIS FEATURE OF KERBRUTE**.
+
+Kerbrute return the hash in a different cypher that GetNPUsers.
+
+- Kerbrute: etype 18
+- GetNPUsers: etype 23
+
+The valid cypher format to crack it is etype 23 `krb5asrep:$23$...`
+
+The owner of kerbrute repo doesn't update. yunusemredemirbas do a pull request with the solution and explain the problem:
+https://github.com/ropnop/kerbrute/pull/93/changes#diff-10dab83c04a99358d431906d37f48b92be97d50a2719d4ddf81c62d3b03a0aebL36-R181
+
 ---
 
 ## Ldapsearch
@@ -1009,17 +1030,17 @@ ldapsearch -x -H ldap://10.10.10.175 -b 'DC=EGOTISTICAL-BANK,DC=LOCAL'
 
 Password policy (anonymous bind):
 ```bash
-ldapsearch -H 172.16.5.5 -x -b "DC=INLANEFREIGHT,DC=LOCAL" -s sub "*" | grep -m 1 -B 10 pwdHistoryLength
+ldapsearch -h 172.16.5.5 -x -b "DC=INLANEFREIGHT,DC=LOCAL" -s sub "*" | grep -m 1 -B 10 pwdHistoryLength
 ```
 
 Users (anonymous bind):
 ```bash
-ldapsearch -H 172.16.5.5 -x -b "DC=INLANEFREIGHT,DC=LOCAL" -s sub "(&(objectclass=user))" | grep sAMAccountName: | cut -f2 -d" "
+ldapsearch -h 172.16.5.5 -x -b "DC=INLANEFREIGHT,DC=LOCAL" -s sub "(&(objectclass=user))" | grep sAMAccountName: | cut -f2 -d" "
 ```
 
 Search all items (with credentials):
 ```bash
-ldapsearch -H support.htb -D 'ldap@support.htb' -w 'nvEfEK16^1aM4$e7AclUf8x$tRWxPWO1%lmz' -b "DC=support,DC=htb"| less
+ldapsearch -h support.htb -D 'ldap@support.htb' -w 'nvEfEK16^1aM4$e7AclUf8x$tRWxPWO1%lmz' -b "DC=support,DC=htb"| less
 ```
 
 ### Graphical tool | apache directory studio
@@ -1766,6 +1787,12 @@ wget -m --no-passive ftp://anonymous:anonymous@10.129.14.136
 ```
 
 Commands: `cd`, `ls`, `get`, `put`
+
+Add files
+```
+put file.ico
+mput directory or file.ico
+```
 
 ---
 
@@ -2975,3 +3002,11 @@ Snaffler.exe -s -d inlanefreight.local -o snaffler.log -v data
 - `-d`: specifies the domain to search within
 - `-o`: write the result in a log file.
 - `-v data`: verbose level. Data is the best if only displays results to the screen.
+
+# Wordlists
+
+## Passwords
+- `/usr/share/wordlists/seclists/Password/LeakedPassword/rockyou.txt`
+- `/usr/share/wordlists/seclists/Password/Common-Password/10k-common-credentials...`
+- `/usr/share/wordlists/seclists/Password/Common-Password/xato-net-10-million...`
+
